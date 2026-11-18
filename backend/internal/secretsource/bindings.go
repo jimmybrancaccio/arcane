@@ -137,11 +137,26 @@ func (s *Service) SaveBinding(ctx context.Context, environmentID, id string, req
 	if previous.Salt == "" {
 		previous.Salt = rand.Text()
 	}
+	// GORM serializes nil slices as SQL NULL instead of JSON arrays.
 	binding := Binding{
-		BaseModel: previous.BaseModel, EnvironmentID: environmentID, OwnerKind: req.Owner.Kind, OwnerID: req.Owner.ID, ClusterID: req.Owner.ClusterID,
-		SourceID: req.SourceID, Target: target, Mappings: req.Mappings, Position: req.Position, Required: req.Required, Enabled: req.Enabled, AutoRollout: req.AutoRollout,
-		Salt: previous.Salt, DeployedHash: previous.DeployedHash, DeployedAt: previous.DeployedAt, Keys: previous.Keys,
+		BaseModel:     previous.BaseModel,
+		EnvironmentID: environmentID,
+		OwnerKind:     req.Owner.Kind,
+		OwnerID:       req.Owner.ID,
+		ClusterID:     req.Owner.ClusterID,
+		SourceID:      req.SourceID,
+		Target:        target,
+		Mappings:      append([]types.SecretMapping{}, req.Mappings...),
+		Position:      req.Position,
+		Required:      req.Required,
+		Enabled:       req.Enabled,
+		AutoRollout:   req.AutoRollout,
+		Salt:          previous.Salt,
+		DeployedHash:  previous.DeployedHash,
+		DeployedAt:    previous.DeployedAt,
+		Keys:          append([]string{}, previous.Keys...),
 	}
+
 	if saveErr := s.db.WithContext(ctx).Save(&binding).Error; saveErr != nil {
 		return types.SecretBinding{}, saveErr
 	}

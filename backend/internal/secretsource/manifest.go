@@ -24,10 +24,21 @@ func (s *Service) Materialize(ctx context.Context, bindings []types.SecretBindin
 				return err
 			}
 			binding := Binding{
-				BaseModel: database.BaseModel{ID: b.ID}, EnvironmentID: "0", OwnerKind: b.Owner.Kind, OwnerID: b.Owner.ID,
-				ClusterID: b.Owner.ClusterID, SourceID: b.SourceID, Target: b.Target, Mappings: b.Mappings, Position: b.Position,
-				Required: b.Required, Enabled: b.Enabled, AutoRollout: false,
+				BaseModel:     database.BaseModel{ID: b.ID},
+				EnvironmentID: "0",
+				OwnerKind:     b.Owner.Kind,
+				OwnerID:       b.Owner.ID,
+				ClusterID:     b.Owner.ClusterID,
+				SourceID:      b.SourceID,
+				Target:        b.Target,
+				Mappings:      append([]types.SecretMapping{}, b.Mappings...),
+				Position:      b.Position,
+				Required:      b.Required,
+				Enabled:       b.Enabled,
+				AutoRollout:   false,
+				Keys:          append([]string{}, b.Keys...),
 			}
+
 			if err := tx.Create(&binding).Error; err != nil {
 				return err
 			}
