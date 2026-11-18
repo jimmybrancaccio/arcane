@@ -114,6 +114,7 @@ type (
 		resolver        EnvironmentResolver
 		statusCallback  StatusUpdateCallback
 		eventCallback   EventCallback
+		secretCallback  SecretCallback
 		streamWindowMiB func() int
 		statusMu        sync.Mutex
 	}
@@ -124,6 +125,7 @@ type (
 		StatusCallback  StatusUpdateCallback
 		MTLS            *MTLS
 		EventCallback   EventCallback
+		SecretCallback  SecretCallback
 		StreamWindowMiB func() int
 	}
 

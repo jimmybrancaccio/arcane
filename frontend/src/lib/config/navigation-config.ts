@@ -295,6 +295,12 @@ export const navigationItems: NavigationSections = {
 					accessSurfaceId: 'settings.category.apikeys'
 				},
 				{
+					title: m.secret_sources(),
+					url: resolve('/(app)/system/secrets'),
+					icon: LockIcon,
+					accessSurfaceId: 'settings.category.secrets'
+				},
+				{
 					title: m.webhook_page_title(),
 					url: resolve('/(app)/system/webhooks'),
 					icon: GlobeIcon,

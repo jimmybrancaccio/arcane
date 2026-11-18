@@ -27,6 +27,7 @@ type (
 	}
 
 	CreateProject struct {
+		SecretKeys     []string                   `json:"secretKeys,omitempty" doc:"External secret variable names used only for create-time structural validation"`
 		EnvContent     *string                    `json:"envContent,omitempty"`
 		TagColors      map[string]ProjectTagColor `json:"tagColors,omitempty"`
 		Name           string                     `json:"name" binding:"required"`
@@ -302,6 +303,7 @@ type (
 	}
 
 	ComposeContentOptions struct {
+		EnvOverride     map[string]string
 		PathMapper      VolumeSourcePathMapper
 		ProjectName     string
 		ComposeContent  string

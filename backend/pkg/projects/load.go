@@ -50,6 +50,7 @@ type (
 	}
 
 	ValidateComposeRequest struct {
+		EnvOverride       EnvMap
 		ProjectsDirectory string
 		ProjectPath       string
 		ProjectName       string
@@ -211,6 +212,7 @@ func LoadComposeProjectFromContent(ctx context.Context, opts types.ComposeConten
 		}
 		maps.Copy(envMap, parsedEnv)
 	}
+	maps.Copy(envMap, opts.EnvOverride)
 	envMap["PWD"] = workingDir
 
 	configFiles := []composetypes.ConfigFile{{Content: []byte(composeContent)}}
@@ -667,6 +669,8 @@ func ValidateComposeContentForUpdate(ctx context.Context, req ValidateComposeReq
 	if envErr != nil {
 		return envErr
 	}
+
+	maps.Copy(fullEnvMap, req.EnvOverride)
 
 	// COMPOSE_FILE in the (edited) env selects the exact file set, so validate
 	// against it — a save that introduces a broken selection fails fast.

@@ -27,6 +27,26 @@ const (
 
 var permissionCatalog = []PermissionCatalogResource{
 	{
+		Key: "secret-sources", Label: "Secret Sources", Description: "Infisical connections and workload bindings", Scope: PermissionScopeGlobal,
+		Actions: []PermissionCatalogAction{
+			{Key: "read", Permission: PermSecretSourcesRead, Label: "Read", Description: "View secret source settings without credentials"},
+			{
+				Key:         "manage",
+				Permission:  PermSecretSourcesManage,
+				Label:       "Manage",
+				Description: "Manage and test Infisical credentials",
+				Requires:    []string{PermSecretSourcesRead},
+			},
+			{
+				Key:         "use",
+				Permission:  PermSecretSourcesUse,
+				Label:       "Use",
+				Description: "Bind sources to authorized workloads",
+				Requires:    []string{PermSecretSourcesRead},
+			},
+		},
+	},
+	{
 		Key:         "users",
 		Label:       "Users",
 		Description: "Arcane user accounts",

@@ -56,6 +56,7 @@ type (
 		VulnerabilityScan      *flow.Job `name:"vulnerability-scan"`
 		VulnerabilityRisk      *scheduler.VulnerabilityRiskJob
 		AutoPatch              *flow.Job `name:"auto-patch"`
+		SecretDrift            *flow.Job `name:"secret-drift"`
 		AutoHeal               *scheduler.AutoHealJob
 		ActivitySweep          *scheduler.ActivitySweepJob
 		UploadSessionsCleanup  *scheduler.UploadSessionsCleanupJob
@@ -259,7 +260,7 @@ func registerJobs(params registerJobsParams) error {
 		params.UpgradeLogCleanup,
 	}
 	if !params.Config.AgentEnabled {
-		jobs = append(jobs, params.ExpiredSessionsCleanup, params.ApnsOutbox, params.LdapSync)
+		jobs = append(jobs, params.ExpiredSessionsCleanup, params.ApnsOutbox, params.LdapSync, params.SecretDrift)
 	}
 	for _, job := range jobs {
 		if err := params.Scheduler.RegisterJob(job); err != nil {

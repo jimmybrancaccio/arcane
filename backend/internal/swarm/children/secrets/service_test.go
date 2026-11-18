@@ -81,6 +81,58 @@ func TestService_UpdateSecret_ReplacesLabelsOnly(t *testing.T) {
 	assert.Equal(t, map[string]string{"tier": "db"}, updated.Spec.Labels)
 }
 
+func TestMaterializeRetainsImmutableSecretVersions(t *testing.T) {
+	var stored []swarm.Secret
+	creates := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/secrets"):
+			assert.NoError(t, json.MarshalWrite(w, stored))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/secrets/create"):
+			var spec swarm.SecretSpec
+			assert.NoError(t, json.UnmarshalRead(r.Body, &spec))
+			creates++
+			id := spec.Name + "-id"
+			stored = append(stored, swarm.Secret{ID: id, Spec: swarm.SecretSpec{Annotations: spec.Annotations}})
+			assert.NoError(t, json.MarshalWrite(w, map[string]string{"ID": id}))
+		case r.Method == http.MethodGet:
+			for _, secret := range stored {
+				if strings.HasSuffix(r.URL.Path, "/"+secret.ID) {
+					assert.NoError(t, json.MarshalWrite(w, secret))
+					return
+				}
+			}
+			http.NotFound(w, r)
+		default:
+			t.Errorf("unexpected Docker secret mutation: %s", r.Method)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(server.Close)
+	dockerClient, err := client.New(client.WithHost(server.URL), client.WithAPIVersion("1.41"), client.WithHTTPClient(server.Client()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dockerClient.Close() })
+	service := NewService(newSettingsDockerService(t, dockerClient), func(context.Context) error { return nil })
+	first := types.SwarmSecret{Spec: swarm.SecretSpec{
+		Annotations: swarm.Annotations{Name: "arcane-infisical-first", Labels: map[string]string{"getarcane.app/infisical": "true"}},
+		Data:        []byte("private-first"),
+	}}
+	result, err := service.Materialize(t.Context(), first)
+	require.NoError(t, err)
+	_, err = service.Materialize(t.Context(), first)
+	require.NoError(t, err)
+	second := types.SwarmSecret{Spec: swarm.SecretSpec{
+		Annotations: swarm.Annotations{Name: "arcane-infisical-second", Labels: map[string]string{"getarcane.app/infisical": "true"}},
+		Data:        []byte("private-second"),
+	}}
+	_, err = service.Materialize(t.Context(), second)
+	require.NoError(t, err)
+	require.Equal(t, 2, creates)
+	require.Len(t, stored, 2, "old versions remain available for rollback")
+	require.Empty(t, result.Spec.Data, "Docker inspection never returns plaintext secret data")
+}
+
 func secretsScopeContext(t *testing.T, target string, bodies map[string]any) context.Context {
 	t.Helper()
 	return httpx.WithEnvironmentScope(t.Context(), &httpx.EnvironmentScope{

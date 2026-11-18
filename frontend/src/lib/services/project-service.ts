@@ -83,7 +83,8 @@ class ProjectService extends BaseAPIService {
 		workspaceFiles: WorkspaceFileDraft[] = [],
 		tags: ProjectTag[] = [],
 		environmentId: string,
-		directory?: string
+		directory?: string,
+		secretKeys: string[] = []
 	): Promise<Project> {
 		const form = new FormData();
 		const uploads: File[] = [];
@@ -101,7 +102,8 @@ class ProjectService extends BaseAPIService {
 				envContent: envContent?.trim() ? envContent : undefined,
 				tags: tags.map((tag) => tag.name),
 				tagColors: Object.fromEntries(tags.map((tag) => [tag.name, tag.color])),
-				directory: directory || undefined
+				directory: directory || undefined,
+				secretKeys
 			})
 		);
 		form.append('manifest', JSON.stringify({ fileChanges }));

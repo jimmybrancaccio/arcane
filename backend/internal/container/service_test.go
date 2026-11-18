@@ -168,6 +168,7 @@ func TestContainerSummaryIconsAppliedAfterGrouping(t *testing.T) {
 	})
 	require.NoError(t, err)
 	service := NewContainerService(ContainerServiceParams{
+		Secrets:         testSecretRuntime{},
 		SettingsService: settingsService,
 		ProjectService: project.NewProjectService(project.ProjectServiceParams{
 			DB:              db,
@@ -230,7 +231,7 @@ func TestGroupContainersByProjectUsesNoProjectBucket(t *testing.T) {
 }
 
 func TestBuildContainerFilterAccessors_FiltersStandaloneContainers(t *testing.T) {
-	service := &ContainerService{}
+	service := &ContainerService{secrets: testSecretRuntime{}}
 	updateInfo := &types.ImageUpdateInfo{HasUpdate: true}
 	items := []types.ContainerSummary{
 		{ID: "standalone", Labels: map[string]string{}, UpdateInfo: updateInfo},
@@ -249,7 +250,7 @@ func TestBuildContainerFilterAccessors_FiltersStandaloneContainers(t *testing.T)
 }
 
 func TestBuildContainerFilterAccessors_FiltersByLabel(t *testing.T) {
-	service := &ContainerService{}
+	service := &ContainerService{secrets: testSecretRuntime{}}
 	items := []types.ContainerSummary{
 		{ID: "tagged", Labels: map[string]string{"heal": "true", "tags": "a,b"}},
 		{ID: "other", Labels: map[string]string{"heal": "false"}},
@@ -288,7 +289,7 @@ func TestBuildContainerFilterAccessors_FiltersByStatus(t *testing.T) {
 		{ID: "paused", State: "paused", Status: "Up 1 hour (Paused)"},
 		{ID: "created", State: "created", Status: "Created"},
 	}
-	paginationConfig := pagination.Config[types.ContainerSummary]{FilterAccessors: (&ContainerService{}).buildContainerPaginationConfig().FilterAccessors}
+	paginationConfig := pagination.Config[types.ContainerSummary]{FilterAccessors: (&ContainerService{secrets: testSecretRuntime{}}).buildContainerPaginationConfig().FilterAccessors}
 
 	tests := []struct {
 		name   string
@@ -351,7 +352,7 @@ func TestCompareContainerPortsForSortDesc_KeepsContainersWithoutPortsLast(t *tes
 		Names: []string{"/none"},
 	}
 
-	sortBindings := (&ContainerService{}).buildContainerPaginationConfig().SortBindings
+	sortBindings := (&ContainerService{secrets: testSecretRuntime{}}).buildContainerPaginationConfig().SortBindings
 	comparePortsDesc := sortBindings[slices.IndexFunc(sortBindings, func(binding pagination.SortBinding[types.ContainerSummary]) bool {
 		return binding.Key == "ports"
 	})].DescFn
@@ -381,6 +382,7 @@ func TestContainerServiceCommitContainerCallsDockerAPI(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	svc := NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		EventService:  event.NewEventService(db, &config.Config{}, nil),
 		DockerService: newSettingsDockerService(t, newTestDockerClient(t, server)),
 	})
@@ -425,6 +427,7 @@ func TestContainerServiceCommitContainerOmitsReferenceWhenRepositoryEmpty(t *tes
 	t.Cleanup(server.Close)
 
 	svc := NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		EventService:  event.NewEventService(db, &config.Config{}, nil),
 		DockerService: newSettingsDockerService(t, newTestDockerClient(t, server)),
 	})
@@ -638,7 +641,7 @@ func TestCreateContainerValidatesHostname(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := (&ContainerService{}).CreateContainer(t.Context(), &container.Config{Image: "nginx:latest", Hostname: test.hostname}, nil, nil, "web", types.Actor{}, nil)
+			_, err := (&ContainerService{secrets: testSecretRuntime{}}).CreateContainer(t.Context(), &container.Config{Image: "nginx:latest", Hostname: test.hostname}, nil, nil, "web", types.Actor{}, nil)
 			require.ErrorIs(t, err, common.ErrValidation)
 			fieldErr, ok := errors.AsType[*types.FieldError](err)
 			require.True(t, ok)
@@ -727,6 +730,7 @@ func TestContainerServiceResizeExec(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	svc := NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		EventService:  event.NewEventService(db, &config.Config{}, nil),
 		DockerService: newSettingsDockerService(t, newTestDockerClient(t, server)),
 	})
@@ -817,6 +821,7 @@ func TestRecreateContainerDaemonCorrelation(t *testing.T) {
 			})
 			kvService := kv.NewKVService(db)
 			svc := NewContainerService(ContainerServiceParams{
+				Secrets:       testSecretRuntime{},
 				EventService:  events,
 				DockerService: newSettingsDockerService(t, dockerClient),
 				KVService:     kvService,
@@ -903,6 +908,7 @@ func TestRecreateContainerRollsBackAfterRequestCancellation(t *testing.T) {
 	t.Cleanup(server.Close)
 	kvService := kv.NewKVService(db)
 	svc := NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		EventService:  event.NewEventService(db, &config.Config{}, nil),
 		DockerService: newSettingsDockerService(t, newTestDockerClient(t, server)),
 		KVService:     kvService,
@@ -1022,6 +1028,7 @@ func TestRecoverInterruptedRedeploys(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 			svc := NewContainerService(ContainerServiceParams{
+				Secrets:       testSecretRuntime{},
 				DockerService: newSettingsDockerService(t, newTestDockerClient(t, server)),
 				KVService:     kvService,
 			})
@@ -1047,6 +1054,7 @@ func TestBuildSummariesUsesContainerTagPolicyUpdates(t *testing.T) {
 	})
 	require.NoError(t, err)
 	service := NewContainerService(ContainerServiceParams{
+		Secrets:         testSecretRuntime{},
 		SettingsService: settingsService,
 	})
 	strategyLabel := "com.getarcaneapp.arcane.updater.strategy"
@@ -1055,7 +1063,13 @@ func TestBuildSummariesUsesContainerTagPolicyUpdates(t *testing.T) {
 		{ID: "second", Image: "app:3.1.0", ImageID: "shared-image", Labels: map[string]string{strategyLabel: "auto"}},
 		{ID: "unchecked", Image: "app:3.1.0", ImageID: "shared-image", Labels: map[string]string{strategyLabel: "tag"}},
 		{ID: "digest", Image: "app:3.1.0", ImageID: "shared-image", Labels: map[string]string{strategyLabel: "digest"}},
-		{ID: "opted-out", Names: []string{"/opted-out"}, Image: "app:3.1.0", ImageID: "shared-image", Labels: map[string]string{"com.getarcaneapp.arcane.updater": "false"}},
+		{
+			ID:      "opted-out",
+			Names:   []string{"/opted-out"},
+			Image:   "app:3.1.0",
+			ImageID: "shared-image",
+			Labels:  map[string]string{"com.getarcaneapp.arcane.updater": "false"},
+		},
 		{ID: "unmonitored", Image: "app:3.1.0", ImageID: "shared-image", Labels: map[string]string{"com.getarcaneapp.arcane.update-check": "false"}},
 	}
 	// The lookup keys results by container ID; containers opted out of checks have no entry.
@@ -1133,7 +1147,10 @@ func TestContainerServiceGetContainerProcesses(t *testing.T) {
 			fallback: &struct {
 				body   string
 				status int
-			}{status: http.StatusOK, body: `{"Titles":["PID","USER","ELAPSED","COMMAND"],"Processes":[["1","root","01:02:03","nginx: master process nginx -g daemon off;"]]}`},
+			}{
+				status: http.StatusOK,
+				body:   `{"Titles":["PID","USER","ELAPSED","COMMAND"],"Processes":[["1","root","01:02:03","nginx: master process nginx -g daemon off;"]]}`,
+			},
 			wantTitles: []string{"PID", "USER", "ELAPSED", "COMMAND"},
 			wantRows:   [][]string{{"1", "root", "01:02:03", "nginx: master process nginx -g daemon off;"}},
 		},
@@ -1166,6 +1183,7 @@ func TestContainerServiceGetContainerProcesses(t *testing.T) {
 			})
 			require.NoError(t, err)
 			svc := NewContainerService(ContainerServiceParams{
+				Secrets:         testSecretRuntime{},
 				DockerService:   newSettingsDockerService(t, newTestDockerClient(t, server)),
 				SettingsService: settingsService,
 			})
@@ -1202,6 +1220,7 @@ func TestContainerServiceGetContainerProcessesPropagatesContext(t *testing.T) {
 	})
 	require.NoError(t, err)
 	svc := NewContainerService(ContainerServiceParams{
+		Secrets:         testSecretRuntime{},
 		DockerService:   newSettingsDockerService(t, newTestDockerClient(t, server)),
 		SettingsService: settingsService,
 	})
@@ -1352,6 +1371,7 @@ func newResourceSortService(t *testing.T, fixture *resourceStatsServer) *Contain
 	require.NoError(t, err)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	return NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		DockerService: dockerService,
 		ImageService: imagedomain.NewImageService(imagedomain.ImageServiceParams{
 			DB:              db,
@@ -1667,6 +1687,7 @@ func newLogsTestService(t *testing.T, tty bool, logsBody []byte, gotQuery *url.V
 	t.Cleanup(server.Close)
 
 	return NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		EventService:  event.NewEventService(setupProjectTestDB(t), &config.Config{}, nil),
 		DockerService: newSettingsDockerService(t, newTestDockerClient(t, server)),
 	})
@@ -1774,11 +1795,15 @@ func TestAggregateContainersMergesEnvironments(t *testing.T) {
 		}
 		return out
 	}
-	svc := &ContainerService{}
+	svc := &ContainerService{secrets: testSecretRuntime{}}
 
 	t.Run("sorts by name across environments and pages", func(t *testing.T) {
 		ctx, queries := containerScopeContext(t, "/api/agents/a,b,c/containers?start=2&limit=2&sort=name&order=asc&groupBy=project", bodies)
-		body, err := svc.AggregateContainers(ctx, pagination.QueryParams{SortParams: pagination.SortParams{Sort: "name", Order: pagination.SortAsc}, Params: pagination.Params{Start: 2, Limit: 2}}, "")
+		body, err := svc.AggregateContainers(
+			ctx,
+			pagination.QueryParams{SortParams: pagination.SortParams{Sort: "name", Order: pagination.SortAsc}, Params: pagination.Params{Start: 2, Limit: 2}},
+			"",
+		)
 		require.NoError(t, err)
 
 		require.True(t, body.Success)
@@ -1828,7 +1853,11 @@ func TestAggregateContainersMergesEnvironments(t *testing.T) {
 
 	t.Run("keeps every row when sorting by environment", func(t *testing.T) {
 		ctx, queries := containerScopeContext(t, "/api/agents/a,b,c/containers?limit=1&sort=environment", bodies)
-		_, err := svc.AggregateContainers(ctx, pagination.QueryParams{SortParams: pagination.SortParams{Sort: "environment", Order: pagination.SortAsc}, Params: pagination.Params{Limit: 1}}, "")
+		_, err := svc.AggregateContainers(
+			ctx,
+			pagination.QueryParams{SortParams: pagination.SortParams{Sort: "environment", Order: pagination.SortAsc}, Params: pagination.Params{Limit: 1}},
+			"",
+		)
 		require.NoError(t, err)
 		stored, _ := queries.Load("a")
 		require.Equal(t, "-1", stored.(url.Values).Get("limit"))
@@ -1843,14 +1872,22 @@ func TestAggregateContainersMergesEnvironments(t *testing.T) {
 
 	t.Run("sorts by environment", func(t *testing.T) {
 		ctx, _ := containerScopeContext(t, "/api/agents/a,b,c/containers?sort=environment&order=asc", bodies)
-		body, err := svc.AggregateContainers(ctx, pagination.QueryParams{SortParams: pagination.SortParams{Sort: "environment", Order: pagination.SortAsc}, Params: pagination.Params{Limit: 20}}, "")
+		body, err := svc.AggregateContainers(
+			ctx,
+			pagination.QueryParams{SortParams: pagination.SortParams{Sort: "environment", Order: pagination.SortAsc}, Params: pagination.Params{Limit: 20}},
+			"",
+		)
 		require.NoError(t, err)
 		require.Equal(t, []string{"a/alpha", "a/Delta", "b/bravo", "b/delta"}, rowLabels(body.Data))
 	})
 
 	t.Run("project groups merge across environments and stay whole", func(t *testing.T) {
 		ctx, queries := containerScopeContext(t, "/api/agents/a,b,c/containers?start=0&limit=1&sort=name&order=asc&groupBy=project", bodies)
-		body, err := svc.AggregateContainers(ctx, pagination.QueryParams{SortParams: pagination.SortParams{Sort: "name", Order: pagination.SortAsc}, Params: pagination.Params{Limit: 1}}, "project")
+		body, err := svc.AggregateContainers(
+			ctx,
+			pagination.QueryParams{SortParams: pagination.SortParams{Sort: "name", Order: pagination.SortAsc}, Params: pagination.Params{Limit: 1}},
+			"project",
+		)
 		require.NoError(t, err)
 
 		require.Equal(t, []string{"shop"}, groupNamesOf(body.Groups))
@@ -1963,6 +2000,7 @@ func newQuadletTestContainerService(t *testing.T) (*ContainerService, *quadletTe
 
 	systemd := &quadletTestSystemd{}
 	svc := NewContainerService(ContainerServiceParams{
+		Secrets:       testSecretRuntime{},
 		EventService:  event.NewEventService(setupProjectTestDB(t), &config.Config{}, nil),
 		DockerService: newSettingsDockerService(t, newTestDockerClient(t, dockerServer)),
 		PodmanService: podman.NewService(podman.Config{
@@ -2025,7 +2063,14 @@ func TestPendingContainerCountUsesScopedTagRecords(t *testing.T) {
 	tagLabels := map[string]string{labels.LabelUpdateStrategy: "auto"}
 	records := []imageupdate.ImageUpdateRecord{
 		{ID: "shared", Repository: "docker.io/library/app", Tag: "stable", HasUpdate: true, UpdateType: "digest"},
-		{ID: "container::first", PolicyKey: imageref.UpdatePolicyKey("app:1.2.3", tagLabels), ContainerID: "first", ImageID: "shared", HasUpdate: true, UpdateType: "tag"},
+		{
+			ID:          "container::first",
+			PolicyKey:   imageref.UpdatePolicyKey("app:1.2.3", tagLabels),
+			ContainerID: "first",
+			ImageID:     "shared",
+			HasUpdate:   true,
+			UpdateType:  "tag",
+		},
 		{
 			ID: "container::other-project",
 			PolicyKey: imageref.UpdatePolicyKey(
@@ -2039,7 +2084,7 @@ func TestPendingContainerCountUsesScopedTagRecords(t *testing.T) {
 		},
 	}
 	require.NoError(t, db.Create(&records).Error)
-	service := &ContainerService{imageService: imagedomain.NewImageService(imagedomain.ImageServiceParams{
+	service := &ContainerService{secrets: testSecretRuntime{}, imageService: imagedomain.NewImageService(imagedomain.ImageServiceParams{
 		DB: db,
 	})}
 	containers := []container.Summary{
@@ -2092,7 +2137,7 @@ func TestAggregateContainerCountsSumsEnvironments(t *testing.T) {
 		},
 	})
 
-	body, err := (&ContainerService{}).AggregateContainerCounts(ctx)
+	body, err := (&ContainerService{secrets: testSecretRuntime{}}).AggregateContainerCounts(ctx)
 	require.NoError(t, err)
 
 	require.Equal(t, types.ContainerStatusCounts{

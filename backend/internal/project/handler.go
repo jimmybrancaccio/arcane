@@ -518,6 +518,7 @@ func (h *ProjectHandler) CreateProject(ctx context.Context, input *CreateProject
 	}, func(runtimeCtx context.Context) error {
 		var createErr error
 		proj, createErr = h.projectService.CreateProject(runtimeCtx, CreateProjectOptions{
+			SecretKeys:     projectInput.SecretKeys,
 			EnvContent:     projectInput.EnvContent,
 			Uploads:        uploads,
 			TagColors:      projectInput.TagColors,

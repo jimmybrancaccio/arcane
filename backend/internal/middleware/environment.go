@@ -197,7 +197,14 @@ func (m *EnvironmentMiddleware) forward(c *echo.Context, tunnel *agent.AgentTunn
 		req.Header.Set(HeaderForwardedPermissions, string(forwarded))
 	}
 
-	slog.DebugContext(ctx, "Routing request through agent tunnel", "environmentId", route.envID, "path", strings.ReplaceAll(strings.ReplaceAll(req.URL.Path, "\n", ""), "\r", ""))
+	slog.DebugContext(
+		ctx,
+		"Routing request through agent tunnel",
+		"environmentId",
+		route.envID,
+		"path",
+		strings.ReplaceAll(strings.ReplaceAll(req.URL.Path, "\n", ""), "\r", ""),
+	)
 	target := agent.MuxAgentBaseURL + path.Join(apiEnvironmentsPrefix, m.localID) + route.suffix + kit.Ternary(req.URL.RawQuery != "", "?"+req.URL.RawQuery, "")
 	if httpx.IsWebSocketUpgradeRequest(req) {
 		wsHeaders := http.Header{HeaderForwardedPermissions: req.Header.Values(HeaderForwardedPermissions)}
@@ -219,7 +226,18 @@ func (m *EnvironmentMiddleware) forward(c *echo.Context, tunnel *agent.AgentTunn
 	}
 
 	// The body is never logged: it can carry compose files and registry credentials.
-	slog.DebugContext(ctx, "Creating proxy request", "method", req.Method, "target", target, "contentLength", req.ContentLength, "contentType", req.Header.Get("Content-Type"))
+	slog.DebugContext(
+		ctx,
+		"Creating proxy request",
+		"method",
+		req.Method,
+		"target",
+		target,
+		"contentLength",
+		req.ContentLength,
+		"contentType",
+		req.Header.Get("Content-Type"),
+	)
 
 	proxyReq := (&http.Request{
 		Method:        req.Method,
@@ -315,6 +333,9 @@ func (m *EnvironmentMiddleware) proxyPermitted(c *echo.Context, ps *authz.Permis
 }
 
 func IsManagerLocalPath(method, suffix string) bool {
+	if strings.HasPrefix(suffix, "/secret-bindings") {
+		return true
+	}
 	if _, ok := managementEndpointSet[suffix]; ok {
 		return true
 	}

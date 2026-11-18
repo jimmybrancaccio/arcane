@@ -51,6 +51,9 @@ const (
 	PermTemplatesCreate          = "templates:create"
 	PermTemplatesUpdate          = "templates:update"
 	PermTemplatesDelete          = "templates:delete"
+	PermSecretSourcesRead        = "secret-sources:read"
+	PermSecretSourcesManage      = "secret-sources:manage"
+	PermSecretSourcesUse         = "secret-sources:use"
 	PermVariablesList            = "variables:list"
 	PermVariablesRead            = "variables:read"
 	PermVariablesCreate          = "variables:create"
@@ -355,6 +358,7 @@ func BuiltInEditorPermissions() []string {
 		PermEnvironmentsList, PermEnvironmentsRead, PermEnvironmentsSync,
 		PermRegistriesList, PermRegistriesRead, PermRegistriesBrowse,
 		PermTemplatesList, PermTemplatesRead, PermTemplatesCreate, PermTemplatesUpdate, PermTemplatesDelete,
+		PermSecretSourcesRead, PermSecretSourcesUse,
 		PermVariablesList, PermVariablesRead, PermVariablesCreate, PermVariablesUpdate, PermVariablesDelete, PermVariablesSync,
 		PermGitReposList, PermGitReposRead,
 		// Editor can run volume backups, so it needs to pick a destination.

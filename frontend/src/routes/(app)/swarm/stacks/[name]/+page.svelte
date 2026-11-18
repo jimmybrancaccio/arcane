@@ -8,6 +8,7 @@
 	import { openConfirmDialog } from '#lib/components/confirm-dialog/index.js';
 	import EditorTabStrip from '#lib/components/editor-tab-strip.svelte';
 	import ResizableSplit from '#lib/components/resizable-split.svelte';
+	import SecretBindings from '#lib/components/secret-bindings.svelte';
 	import { TabBar, type TabItem } from '#lib/components/tab-bar/index.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import * as CodeBlock from '#lib/components/ui/code-block/index.js';
@@ -315,6 +316,7 @@
 
 <ResourcePageLayout title={stackName} subtitle={stackSubtitle} {actionButtons} {statCards}>
 	{#snippet mainContent()}
+		<SecretBindings environmentId={data.envId} owner={{ kind: 'stack', id: data.stackName }} />
 		<div class="flex min-h-screen-inset-18 flex-col gap-4">
 			{#if !hasLiveStack && canViewSource}
 				<Card.Root>

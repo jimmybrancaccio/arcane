@@ -33,6 +33,7 @@ import (
 	"getarcane.dev/arcane/v3/internal/scheduler"
 	"getarcane.dev/arcane/v3/internal/scheduler/flow"
 	"getarcane.dev/arcane/v3/internal/scheduler/runs"
+	"getarcane.dev/arcane/v3/internal/secretsource"
 	"getarcane.dev/arcane/v3/internal/settings"
 	"getarcane.dev/arcane/v3/internal/system"
 	"getarcane.dev/arcane/v3/internal/template"
@@ -380,4 +381,12 @@ func provideSystemService(
 		return nil, err
 	}
 	return service, nil
+}
+
+func provideSecretModule(p secretsource.Params, engine *flow.Engine) (*secretsource.Module, error) {
+	module := secretsource.New(p)
+	if err := module.RegisterWorkflows(engine); err != nil {
+		return nil, err
+	}
+	return module, nil
 }

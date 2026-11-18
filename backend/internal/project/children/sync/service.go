@@ -20,6 +20,7 @@ import (
 
 type (
 	ProjectFilesUpdate struct {
+		EnvOverride       projects.EnvMap
 		ComposeContent    *string
 		EnvContent        *string
 		OverrideContent   *string
@@ -173,6 +174,7 @@ func PersistUpdatedProjectFiles(ctx context.Context, req ProjectFilesUpdate) err
 	}
 	valOverride, valOverrideName := projects.ResolveEffectiveOverrideForValidation(ctx, req.ProjectPath, req.OverrideContent)
 	if validateErr := projects.ValidateComposeContentForUpdate(ctx, projects.ValidateComposeRequest{
+		EnvOverride:       req.EnvOverride,
 		ProjectsDirectory: req.ProjectsDirectory,
 		ProjectPath:       req.ProjectPath,
 		ProjectName:       req.ProjectName,

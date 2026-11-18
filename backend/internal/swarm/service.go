@@ -49,6 +49,7 @@ import (
 
 type (
 	SwarmService struct {
+		secretRuntime      types.SecretRuntime
 		dockerService      *docker.DockerClientService
 		kvService          *kv.KVService
 		environmentService *environment.EnvironmentService
@@ -68,6 +69,7 @@ type (
 	}
 
 	SwarmServiceParams struct {
+		Secrets types.SecretRuntime
 		fx.In
 
 		DockerService      *docker.DockerClientService
@@ -109,13 +111,19 @@ var (
 
 func NewSwarmService(p SwarmServiceParams) *SwarmService {
 	s := &SwarmService{
+		secretRuntime:      p.Secrets,
 		dockerService:      p.DockerService,
 		kvService:          p.KVService,
 		environmentService: p.EnvironmentService,
 		tunnels:            p.Tunnels,
 	}
 
-	s.services = services.NewService(p.DockerService, s.ensureSwarmManager, s.listTasksPaginatedWithFilters)
+	s.services = services.NewService(
+		p.DockerService,
+		s.ensureSwarmManager,
+		s.listTasksPaginatedWithFilters,
+		types.SwarmSecretHooks{Resolve: s.resolveSecrets, Prepare: s.prepareSecretSpec, Record: s.secretRuntime.RecordSecretDeployment},
+	)
 	s.nodes = nodes.NewService(nodes.ServiceParams{
 		DockerService:      p.DockerService,
 		EnsureManager:      s.ensureSwarmManager,
@@ -125,6 +133,7 @@ func NewSwarmService(p SwarmServiceParams) *SwarmService {
 		Tunnels:            p.Tunnels,
 	})
 	s.stacks = stacks.NewService(stacks.ServiceParams{
+		Secrets:          types.SwarmSecretHooks{Resolve: s.resolveSecrets, Prepare: s.prepareSecretSpec, Record: s.secretRuntime.RecordSecretDeployment},
 		DockerService:    p.DockerService,
 		EnsureManager:    s.ensureSwarmManager,
 		ListTasks:        s.listTasksPaginatedWithFilters,

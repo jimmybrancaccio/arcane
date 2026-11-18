@@ -441,7 +441,7 @@ func TestMigration102_CleansUpRBACPermissions(t *testing.T) {
 		return out
 	}
 
-	require.NoError(t, migrateDatabase(ctx, rawDB, dbProviderSQLite, MigrationOptions{}, 115))
+	require.NoError(t, migrateDatabase(ctx, rawDB, dbProviderSQLite, MigrationOptions{}, 117))
 	checker := expanded("image-updates:check", "image-updates:apply")
 	assert.Equal(t, map[string][]string{
 		"r1": {"containers:list"},
@@ -554,9 +554,15 @@ func TestMigration104_AddsAgentEnrollmentToken(t *testing.T) {
 	require.NoError(t, err)
 	_, err = rawDB.ExecContext(ctx, `INSERT INTO enrollment_tokens (id, name, token_hash, token_encrypted) VALUES ('t2', 'second', 'hash', 'enc-2')`)
 	require.Error(t, err, "token hashes are unique")
-	_, err = rawDB.ExecContext(ctx, `INSERT INTO enrollment_tokens (id, name, token_hash, token_encrypted, environment_id, max_uses) VALUES ('t3', 'bound', 'hash-3', 'enc-3', 'env-1', 1)`)
+	_, err = rawDB.ExecContext(
+		ctx,
+		`INSERT INTO enrollment_tokens (id, name, token_hash, token_encrypted, environment_id, max_uses) VALUES ('t3', 'bound', 'hash-3', 'enc-3', 'env-1', 1)`,
+	)
 	require.NoError(t, err)
-	_, err = rawDB.ExecContext(ctx, `INSERT INTO enrollment_tokens (id, name, token_hash, token_encrypted, environment_id) VALUES ('t4', 'bound again', 'hash-4', 'enc-4', 'env-1')`)
+	_, err = rawDB.ExecContext(
+		ctx,
+		`INSERT INTO enrollment_tokens (id, name, token_hash, token_encrypted, environment_id) VALUES ('t4', 'bound again', 'hash-4', 'enc-4', 'env-1')`,
+	)
 	require.Error(t, err, "an environment holds at most one bound token")
 	_, err = rawDB.ExecContext(ctx, `INSERT INTO enrollment_tokens (id, name, token_hash, token_encrypted) VALUES ('t5', 'unbound', 'hash-5', 'enc-5')`)
 	require.NoError(t, err, "unbound tokens are not limited by the environment index")
@@ -565,7 +571,10 @@ func TestMigration104_AddsAgentEnrollmentToken(t *testing.T) {
 
 	var useCount int
 	var maxUses, environmentID stdsql.NullString
-	require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT use_count, max_uses, environment_id FROM enrollment_tokens WHERE id = 't1'`).Scan(&useCount, &maxUses, &environmentID))
+	require.NoError(
+		t,
+		rawDB.QueryRowContext(ctx, `SELECT use_count, max_uses, environment_id FROM enrollment_tokens WHERE id = 't1'`).Scan(&useCount, &maxUses, &environmentID),
+	)
 	assert.Zero(t, useCount)
 	assert.False(t, maxUses.Valid, "max uses defaults to unlimited")
 	assert.False(t, environmentID.Valid)
@@ -576,7 +585,10 @@ func TestMigration104_AddsAgentEnrollmentToken(t *testing.T) {
 		return count == 1
 	}
 	assert.True(t, hasRequestHashColumn())
-	_, err = rawDB.ExecContext(ctx, `INSERT INTO environments (id, name, api_url, status, enabled) VALUES ('e1', 'one', 'agent://e1', 'pending', true), ('e2', 'two', 'agent://e2', 'pending', true)`)
+	_, err = rawDB.ExecContext(
+		ctx,
+		`INSERT INTO environments (id, name, api_url, status, enabled) VALUES ('e1', 'one', 'agent://e1', 'pending', true), ('e2', 'two', 'agent://e2', 'pending', true)`,
+	)
 	require.NoError(t, err, "environments without an enrollment request are not limited by the request index")
 	_, err = rawDB.ExecContext(ctx, `UPDATE environments SET enrollment_request_hash = 'request' WHERE id = 'e1'`)
 	require.NoError(t, err)
@@ -617,7 +629,10 @@ func TestMigration106_AddsImageUpdateCreated(t *testing.T) {
 	rawDB, _ := newSQLiteSQLDB(t, t.TempDir(), "arcane-image-update-created.db")
 	createdColumns := func() int {
 		var count int
-		require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('image_updates') WHERE name IN ('current_created', 'latest_created')`).Scan(&count))
+		require.NoError(
+			t,
+			rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('image_updates') WHERE name IN ('current_created', 'latest_created')`).Scan(&count),
+		)
 		return count
 	}
 
@@ -733,7 +748,10 @@ func TestMigration111_AddsGitOpsComposeOverrideAndEnv(t *testing.T) {
 	rawDB, _ := newSQLiteSQLDB(t, t.TempDir(), "arcane-gitops-override-env.db")
 	syncColumns := func() int {
 		var count int
-		require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('gitops_syncs') WHERE name IN ('compose_override_path', 'env_content')`).Scan(&count))
+		require.NoError(
+			t,
+			rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('gitops_syncs') WHERE name IN ('compose_override_path', 'env_content')`).Scan(&count),
+		)
 		return count
 	}
 
@@ -834,7 +852,10 @@ func TestMigration114_AddsImageUpdateBlocked(t *testing.T) {
 	rawDB, _ := newSQLiteSQLDB(t, t.TempDir(), "arcane-image-update-blocked.db")
 	blockedColumns := func() int {
 		var count int
-		require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('image_updates') WHERE name IN ('blocked_reason', 'blocked_policy')`).Scan(&count))
+		require.NoError(
+			t,
+			rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('image_updates') WHERE name IN ('blocked_reason', 'blocked_policy')`).Scan(&count),
+		)
 		return count
 	}
 
@@ -862,7 +883,10 @@ func TestMigration115_GrantsGitOpsBidirectional(t *testing.T) {
 		var keyGrants int
 		require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT permissions FROM roles WHERE id = 'm1'`).Scan(&pusher))
 		require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT permissions FROM roles WHERE id = 'm2'`).Scan(&reader))
-		require.NoError(t, rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_key_permissions WHERE api_key_id = 'mk1' AND permission = 'gitops:bidirectional'`).Scan(&keyGrants))
+		require.NoError(
+			t,
+			rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_key_permissions WHERE api_key_id = 'mk1' AND permission = 'gitops:bidirectional'`).Scan(&keyGrants),
+		)
 		return pusher, reader, keyGrants
 	}
 
@@ -902,6 +926,34 @@ func TestMigration116_AddsLdapUserColumns(t *testing.T) {
 
 	require.NoError(t, migrateDatabase(ctx, rawDB, dbProviderSQLite, MigrationOptions{AllowDowngrade: true}, 115))
 	assert.Zero(t, schemaObjects())
+}
+
+func TestMigration117_SecretSourcesRoundTrip(t *testing.T) {
+	ctx := t.Context()
+	rawDB, _ := newSQLiteSQLDB(t, t.TempDir(), "arcane-secret-sources.db")
+	require.NoError(t, migrateDatabase(ctx, rawDB, dbProviderSQLite, MigrationOptions{}, 117))
+	var count int
+	require.NoError(
+		t,
+		rawDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('secret_sources', 'secret_bindings')").Scan(&count),
+	)
+	assert.Equal(t, 2, count)
+	_, err := rawDB.ExecContext(
+		ctx,
+		`INSERT INTO secret_sources(id, created_at, name, settings, credential, is_default) VALUES ('first', CURRENT_TIMESTAMP, 'First', '{}', 'ciphertext', true)`,
+	)
+	require.NoError(t, err)
+	_, err = rawDB.ExecContext(
+		ctx,
+		`INSERT INTO secret_sources(id, created_at, name, settings, credential, is_default) VALUES ('second', CURRENT_TIMESTAMP, 'Second', '{}', 'ciphertext', true)`,
+	)
+	require.Error(t, err)
+	require.NoError(t, migrateDatabase(ctx, rawDB, dbProviderSQLite, MigrationOptions{AllowDowngrade: true}, 116))
+	require.NoError(
+		t,
+		rawDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('secret_sources', 'secret_bindings')").Scan(&count),
+	)
+	assert.Zero(t, count)
 }
 
 func TestMigrateDatabase_BlocksFutureGooseVersionWithoutFlag(t *testing.T) {
@@ -1222,7 +1274,11 @@ func TestSQLiteDSN(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "immediate", parsed.Query().Get("_txlock"))
 			require.Equal(t, "shared", parsed.Query().Get("cache"))
-			require.ElementsMatch(t, []string{"foreign_keys(1)", "synchronous(NORMAL)", "busy_timeout(2500)", "journal_mode(WAL)", "cache_size(-2000)", "temp_store(MEMORY)"}, parsed.Query()["_pragma"])
+			require.ElementsMatch(
+				t,
+				[]string{"foreign_keys(1)", "synchronous(NORMAL)", "busy_timeout(2500)", "journal_mode(WAL)", "cache_size(-2000)", "temp_store(MEMORY)"},
+				parsed.Query()["_pragma"],
+			)
 			require.Empty(t, parsed.Query().Get("_fk"))
 			require.Empty(t, parsed.Query().Get("_foreign_keys"))
 			require.Empty(t, parsed.Query().Get("_busy_timeout"))

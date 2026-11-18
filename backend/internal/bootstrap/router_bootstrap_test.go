@@ -24,6 +24,7 @@ import (
 	"getarcane.dev/arcane/v3/internal/health"
 	"getarcane.dev/arcane/v3/internal/middleware"
 	"getarcane.dev/arcane/v3/internal/project"
+	"getarcane.dev/arcane/v3/internal/secretsource"
 	"getarcane.dev/arcane/v3/internal/swarm"
 	"getarcane.dev/arcane/v3/internal/system"
 	"getarcane.dev/arcane/v3/pkg/agent"
@@ -41,6 +42,7 @@ func TestNewRouter_DecodesPathParams(t *testing.T) {
 		Context: t.Context(),
 		Config:  cfg,
 		HandlerDeps: api.HandlerDeps{
+			Secrets:   secretsource.New(secretsource.Params{}),
 			Project:   project.New(project.ModuleParams{Service: &project.ProjectService{}}),
 			Container: container.New(&container.ContainerService{}, nil, nil, nil),
 			Swarm:     swarm.New(&swarm.SwarmService{}, nil, nil, nil),
@@ -145,6 +147,7 @@ func TestNewRouter_StrictTransportSecurity(t *testing.T) {
 		Context: t.Context(),
 		Config:  cfg,
 		HandlerDeps: api.HandlerDeps{
+			Secrets:   secretsource.New(secretsource.Params{}),
 			Project:   project.New(project.ModuleParams{Service: &project.ProjectService{}}),
 			Container: container.New(&container.ContainerService{}, nil, nil, nil),
 			Swarm:     swarm.New(&swarm.SwarmService{}, nil, nil, nil),
@@ -214,6 +217,7 @@ func TestProxiedEnvironmentRoutesAreAgentRoutable(t *testing.T) {
 		Context: t.Context(),
 		Config:  cfg,
 		HandlerDeps: api.HandlerDeps{
+			Secrets:   secretsource.New(secretsource.Params{}),
 			Project:   project.New(project.ModuleParams{Service: &project.ProjectService{}}),
 			Container: container.New(&container.ContainerService{}, nil, nil, nil),
 			Swarm:     swarm.New(&swarm.SwarmService{}, nil, nil, nil),
@@ -257,6 +261,7 @@ func TestEveryAPIRouteIsInPermissionExport(t *testing.T) {
 		Lifecycle: fxtest.NewLifecycle(t),
 		Config:    cfg,
 		HandlerDeps: api.HandlerDeps{
+			Secrets:   secretsource.New(secretsource.Params{}),
 			Project:   project.New(project.ModuleParams{Service: &project.ProjectService{}}),
 			Container: container.New(&container.ContainerService{}, nil, nil, nil),
 			Swarm:     swarm.New(&swarm.SwarmService{}, nil, nil, nil),

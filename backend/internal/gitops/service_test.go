@@ -1148,7 +1148,17 @@ func setupGitOpsBackupTestService(t *testing.T) *backupTestEnv {
 
 	ctx := t.Context()
 	db := setupGitOpsProjectTestDB(t)
-	require.NoError(t, db.AutoMigrate(&projectpkg.GitOpsSync{}, &projectpkg.ProjectTag{}, &gitrepo.GitRepository{}, &environment.Environment{}, &activity.Activity{}, &activity.ActivityMessage{}))
+	require.NoError(
+		t,
+		db.AutoMigrate(
+			&projectpkg.GitOpsSync{},
+			&projectpkg.ProjectTag{},
+			&gitrepo.GitRepository{},
+			&environment.Environment{},
+			&activity.Activity{},
+			&activity.ActivityMessage{},
+		),
+	)
 
 	settingsService, err := newGitOpsSettingsServiceForTest(t, ctx, db)
 	require.NoError(t, err)
@@ -2161,6 +2171,7 @@ func setupGitOpsDeleteSwarmStackTest(t *testing.T, gate *runs.Admission) (*GitOp
 	settingsService, err := newGitOpsSettingsServiceForTest(t, t.Context(), db)
 	require.NoError(t, err)
 	svc.swarmService = swarm.NewSwarmService(swarm.SwarmServiceParams{
+		Secrets:         testSecretRuntime{},
 		DockerService:   dockerInternal.NewDockerClientService(t.Context(), db, settingsService, bus.Config{}).WithClient(cli),
 		SettingsService: settingsService,
 	})
@@ -2444,7 +2455,11 @@ func TestGitOpsBidirectional_RunMergesPerFile(t *testing.T) {
 				BackupPaths:   []string{"compose.yaml", "config"},
 				SyncDirectory: test.syncDirectory,
 			})
-			require.Equal(t, kit.Ternary(test.wantConflict && len(test.seedRemote) > 0, backup.BackupStatusConflict, "success"), kit.FromPtr(env.reload(t, syncRecord.ID).LastSyncStatus))
+			require.Equal(
+				t,
+				kit.Ternary(test.wantConflict && len(test.seedRemote) > 0, backup.BackupStatusConflict, "success"),
+				kit.FromPtr(env.reload(t, syncRecord.ID).LastSyncStatus),
+			)
 
 			if len(test.remote) > 0 {
 				pushRemoteBackupFiles(t, env, "edited in git", test.remote, test.remoteExecutable)

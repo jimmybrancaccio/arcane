@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
@@ -127,6 +128,31 @@ func (s *Service) CreateSecret(ctx context.Context, secret types.SwarmSecret) (*
 	}
 
 	return s.GetSecret(ctx, createResult.ID)
+}
+
+// Materialize reuses a versioned Infisical secret without replacing its immutable data.
+func (s *Service) Materialize(ctx context.Context, secret types.SwarmSecret) (*types.SwarmSecret, error) {
+	listed, err := s.docker.Call(ctx, func(ctx context.Context, c *client.Client) (client.SecretListResult, error) {
+		return c.SecretList(ctx, client.SecretListOptions{Filters: make(client.Filters).Add("name", secret.Spec.Name)})
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range listed.Items {
+		if item.Spec.Name == secret.Spec.Name && item.Spec.Labels["getarcane.app/infisical"] == "true" {
+			result := types.NewSwarmSecret(item)
+			return &result, nil
+		}
+	}
+	created, createErr := s.CreateSecret(ctx, secret)
+	if !errdefs.IsConflict(createErr) {
+		return created, createErr
+	}
+	existing, inspectErr := s.GetSecret(ctx, secret.Spec.Name)
+	if inspectErr != nil || existing.Spec.Labels["getarcane.app/infisical"] != "true" {
+		return nil, createErr
+	}
+	return existing, nil
 }
 
 func (s *Service) UpdateSecret(ctx context.Context, secretID string, req types.SwarmSecretUpdateRequest) (*types.SwarmSecret, error) {

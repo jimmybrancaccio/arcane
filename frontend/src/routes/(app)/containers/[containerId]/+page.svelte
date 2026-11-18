@@ -15,6 +15,7 @@
 	import EnvironmentDestinationSelect from '#lib/components/form/environment-destination-select.svelte';
 	import IconImage from '#lib/components/icon-image.svelte';
 	import ResourceNotFound from '#lib/components/resource-not-found.svelte';
+	import SecretBindings from '#lib/components/secret-bindings.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import * as Tabs from '#lib/components/ui/tabs/index.js';
 	import { useUrlTab } from '#lib/hooks/use-url-tab.svelte.js';
@@ -615,6 +616,7 @@
 			onViewStorage={hasMounts ? () => onTabChange('storage') : undefined}
 			onViewNetworks={showNetworkTab ? () => onTabChange('network') : undefined}
 		/>
+		<SecretBindings environmentId={currentEnvId} owner={{ kind: 'container', id: container.name.replace(/^\//, '') }} />
 	</Tabs.Content>
 
 	{#if showStats}

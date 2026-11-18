@@ -24,6 +24,7 @@
 	import ProjectTagEditor from '#lib/components/project-tag-editor.svelte';
 	import ProjectUpdateItem from '#lib/components/project-update-item.svelte';
 	import ResizableSplit from '#lib/components/resizable-split.svelte';
+	import SecretBindings from '#lib/components/secret-bindings.svelte';
 	import { type TabItem } from '#lib/components/tab-bar/index.js';
 	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -424,7 +425,7 @@
 
 	let autoScrollStackLogs = $state(true);
 
-	type ProjectTab = 'services' | 'compose' | 'backup' | 'logs';
+	type ProjectTab = 'secrets' | 'services' | 'compose' | 'backup' | 'logs';
 	let selectedTab = $state<ProjectTab>('compose');
 	let userSelectedTabProjectId: string | null = null;
 	let composeOpen = $state(true);
@@ -550,6 +551,7 @@
 	let canSave = $derived(canUpdateProject && !project?.isArchived && hasChanges && !hasAnyErrors && !composeActionsBlocked);
 
 	const tabItems = $derived<TabItem[]>([
+		{ value: 'secrets', label: m.secret_sources(), icon: SettingsIcon },
 		{
 			value: 'services',
 			label: m.services(),
@@ -575,7 +577,7 @@
 	let nameInputRef = $state<HTMLInputElement | null>(null);
 
 	type ComposeUIPrefs = {
-		tab: 'services' | 'compose' | 'backup' | 'logs';
+		tab: 'secrets' | 'services' | 'compose' | 'backup' | 'logs';
 		composeOpen: boolean;
 		overrideOpen: boolean;
 		envOpen: boolean;
@@ -2574,6 +2576,9 @@
 		{/snippet}
 
 		{#snippet tabContent()}
+			<Tabs.Content value="secrets" class="h-full overflow-y-auto"
+				><SecretBindings environmentId={envId} owner={{ kind: 'project', id: project.id }} /></Tabs.Content
+			>
 			{@render projectServicesTab(project)}
 
 			{@render projectComposeTab(project)}
