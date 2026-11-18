@@ -132,7 +132,7 @@ func (s *SwarmService) ApplySecretBindings(ctx context.Context, owner types.Secr
 			return prepareErr
 		}
 		if _, updateErr := s.dockerService.Call(ctx, func(ctx context.Context, c *client.Client) (client.ServiceUpdateResult, error) {
-			return c.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{Spec: spec, Version: service.Version, RegistryAuthFrom: "previous-spec"})
+			return c.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{Spec: spec, Version: service.Version, RegistryAuthFrom: swarm.RegistryAuthFromSpec})
 		}); updateErr != nil {
 			return updateErr
 		}

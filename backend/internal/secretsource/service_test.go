@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/libtnb/sqlite"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"kit.getarcane.app/sys/crypto"
 
@@ -33,13 +32,9 @@ var _ types.SecretRuntime = (*Service)(nil)
 
 func newSecretFixture(t *testing.T) (*Service, *secretFixture, types.SecretSource) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := database.Initialize(t.Context(), "file:"+filepath.Join(t.TempDir(), "arcane.db"), database.MigrationOptions{})
 	require.NoError(t, err)
-	raw, err := db.DB()
-	require.NoError(t, err)
-	raw.SetMaxOpenConns(1)
-	t.Cleanup(func() { require.NoError(t, raw.Close()) })
-	require.NoError(t, db.AutoMigrate(&Source{}, &Binding{}, &event.Event{}))
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	crypto.InitEncryption(crypto.Config{EncryptionKey: "arcane-infisical-testing-key-32-bytes", Environment: "test"})
 	fixture := &secretFixture{values: map[string]string{"PASSWORD": "test-sensitive-value"}}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +65,7 @@ func newSecretFixture(t *testing.T) (*Service, *secretFixture, types.SecretSourc
 		_ = json.MarshalWrite(w, map[string]any{"secrets": items})
 	}))
 	t.Cleanup(server.Close)
-	service := NewService(&database.DB{DB: db}, &config.Config{}, event.NewEventService(&database.DB{DB: db}, &config.Config{}, server.Client()))
+	service := NewService(db, &config.Config{}, event.NewEventService(db, &config.Config{}, server.Client()))
 	source, err := service.SaveSource(
 		t.Context(),
 		"",
@@ -175,6 +170,16 @@ func TestAgentSecretResolutionIsEnvironmentScoped(t *testing.T) {
 	result, err = s.AgentRequest(t.Context(), "agent-one", types.SecretTunnelRequest{Owner: owner})
 	require.NoError(t, err)
 	require.Equal(t, "test-sensitive-value", result.Environment["PASSWORD"])
+	manifest, err := s.ListBindings(t.Context(), "agent-one", owner)
+	require.NoError(t, err)
+	s.config.AgentEnabled = true
+	require.NoError(t, s.Materialize(t.Context(), manifest))
+	materialized, err := s.ListBindings(t.Context(), "0", owner)
+	require.NoError(t, err)
+	require.Len(t, materialized, 1)
+	require.Equal(t, manifest[0].ID, materialized[0].ID)
+	require.Empty(t, materialized[0].Mappings)
+	require.Equal(t, manifest[0].Keys, materialized[0].Keys)
 }
 
 func TestSourceBrowsingReturnsTargetMetadata(t *testing.T) {
