@@ -20,6 +20,7 @@ import (
 	"getarcane.dev/arcane/v3/internal/event"
 	"getarcane.dev/arcane/v3/internal/middleware"
 	"getarcane.dev/arcane/v3/internal/notification"
+	"getarcane.dev/arcane/v3/internal/secretsource"
 	"getarcane.dev/arcane/v3/internal/settings"
 	"getarcane.dev/arcane/v3/pkg/agent"
 	"getarcane.dev/arcane/v3/pkg/authz"
@@ -47,6 +48,7 @@ type (
 		EventService        *event.EventService
 		NotificationService *notification.NotificationService
 		SettingsService     *settings.SettingsService
+		Secrets             *secretsource.Service
 	}
 )
 
@@ -79,8 +81,9 @@ func newTunnelServer(p TunnelServerParams) *agent.TunnelServer {
 		return nil
 	}
 	server := agent.NewTunnelServer(agent.TunnelServerOptions{
-		Registry: p.Registry,
-		Resolver: p.EnvironmentService.ResolveAgentEnvironmentByToken,
+		Registry:       p.Registry,
+		SecretCallback: p.Secrets.AgentRequest,
+		Resolver:       p.EnvironmentService.ResolveAgentEnvironmentByToken,
 		StatusCallback: func(ctx context.Context, envID string, state agent.ConnectionState) {
 			if state == agent.ConnectionStateOffline && p.Context.Err() != nil {
 				return

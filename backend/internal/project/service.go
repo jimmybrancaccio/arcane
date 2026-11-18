@@ -77,6 +77,7 @@ import (
 
 type (
 	ProjectService struct {
+		secrets            types.SecretRuntime
 		composeCoordinator types.ComposeCoordinator
 
 		parsedCompose types.ComposeCache[*composetypes.Project]
@@ -112,6 +113,7 @@ type (
 	}
 
 	CreateProjectOptions struct {
+		SecretKeys     []string
 		EnvContent     *string
 		Uploads        map[int][]byte
 		TagColors      map[string]types.ProjectTagColor
@@ -143,6 +145,7 @@ type (
 	}
 
 	ProjectServiceParams struct {
+		Secrets                     types.SecretRuntime
 		DB                          *database.DB
 		SettingsService             *settings.SettingsService
 		EventService                *event.EventService
@@ -404,6 +407,7 @@ func (s *ProjectService) preloadGitOpsSyncs(ctx context.Context, env *projectMet
 func NewProjectService(p ProjectServiceParams) *ProjectService {
 	var s *ProjectService
 	s = &ProjectService{
+		secrets:            p.Secrets,
 		composeCoordinator: projects.NewCoordinator(types.ComposeCommands{Stop: composeStopProjectServices, Up: composeUpProjectServices, Create: projects.ComposeCreate}),
 		db:                 p.DB,
 		settingsService:    p.SettingsService,
@@ -743,7 +747,10 @@ func (s *ProjectService) EnsureProjectPathUnderRoot(ctx context.Context, proj *P
 		}
 	}
 
-	candidate := filepath.Join(roots[0].ContainerPath, kit.Ternary(strings.TrimSpace(kit.FromPtr(proj.DirName)) == "", projects.SanitizeProjectName(proj.Name), kit.FromPtr(proj.DirName)))
+	candidate := filepath.Join(
+		roots[0].ContainerPath,
+		kit.Ternary(strings.TrimSpace(kit.FromPtr(proj.DirName)) == "", projects.SanitizeProjectName(proj.Name), kit.FromPtr(proj.DirName)),
+	)
 	slog.WarnContext(ctx, "Normalizing project path to projects root", "projectId", proj.ID, "oldPath", proj.Path, "newPath", candidate, "root", roots[0].ContainerPath)
 	*proj = Project{ //exhaustruct:enforce
 		BaseModel:          proj.BaseModel,
@@ -899,10 +906,12 @@ func (s *ProjectService) loadComposeProjectForProject(ctx context.Context, proj 
 		PathMapper:        s.projectPathMapper(ctx),
 		Services:          services,
 		Prepare:           prepare,
+		EnvOverride:       projectSecretEnvironment(ctx),
 	})
 	if loadErr != nil {
 		return nil, loadErr
 	}
+	applyProjectSecrets(ctx, composeProject)
 	return composeProject, nil
 }
 
@@ -1026,7 +1035,10 @@ func (s *LifecycleService) runPreDeploy(ctx context.Context, project *Project, a
 		strings.TrimSpace(s.settingsService.GetStringSetting(ctx, "lifecycleDefaultRunnerImage")),
 	)
 	if runnerImage == "" {
-		return fmt.Errorf("pre-deploy script %q is configured but no runner image is set on the GitOps sync or lifecycleDefaultRunnerImage setting", *syncRecord.PreDeployScriptPath)
+		return fmt.Errorf(
+			"pre-deploy script %q is configured but no runner image is set on the GitOps sync or lifecycleDefaultRunnerImage setting",
+			*syncRecord.PreDeployScriptPath,
+		)
 	}
 
 	scriptPath := strings.TrimSpace(*syncRecord.PreDeployScriptPath)
@@ -1185,7 +1197,14 @@ func (s *ProjectService) UpdateProjectServices(ctx context.Context, projectID st
 	return s.updateProjectServices(ctx, projectID, options)
 }
 
-func (s *ProjectService) updateProjectServices(ctx context.Context, projectID string, options ServiceUpdateOptions) error {
+func (s *ProjectService) updateProjectServices(ctx context.Context, projectID string, options ServiceUpdateOptions) (resultErr error) {
+	var finish func(error) error
+	ctx, finish, resultErr = s.beginSecretDeployment(ctx, projectID)
+	if resultErr != nil {
+		return resultErr
+	}
+	defer func() { resultErr = finish(resultErr) }()
+
 	proj, err := s.getMutableProject(ctx, projectID)
 	if err != nil {
 		return err
@@ -1214,7 +1233,18 @@ func (s *ProjectService) updateProjectServices(ctx context.Context, projectID st
 	}
 	dependents, stoppedDependents := s.deployment.NamespaceDependents(ctx, compProj, options.Services)
 	if len(dependents)+len(stoppedDependents) > 0 {
-		slog.InfoContext(ctx, "recreating namespace dependents with updated services", "projectId", projectID, "services", options.Services, "dependents", dependents, "stoppedDependents", stoppedDependents)
+		slog.InfoContext(
+			ctx,
+			"recreating namespace dependents with updated services",
+			"projectId",
+			projectID,
+			"services",
+			options.Services,
+			"dependents",
+			dependents,
+			"stoppedDependents",
+			stoppedDependents,
+		)
 		if compProj, err = s.loadComposeProjectForProject(ctx, proj, prepare, slices.Concat(options.Services, dependents, stoppedDependents)...); err != nil {
 			return fmt.Errorf("failed to load compose project with dependents: %w", err)
 		}
@@ -1358,7 +1388,14 @@ func (s *ProjectService) DeployProject(ctx context.Context, projectID string, us
 	return s.deployProject(ctx, projectID, user, options)
 }
 
-func (s *ProjectService) deployProject(ctx context.Context, projectID string, user types.Actor, options *types.ProjectDeployOptions) error {
+func (s *ProjectService) deployProject(ctx context.Context, projectID string, user types.Actor, options *types.ProjectDeployOptions) (resultErr error) {
+	var finish func(error) error
+	ctx, finish, resultErr = s.beginSecretDeployment(ctx, projectID)
+	if resultErr != nil {
+		return resultErr
+	}
+	defer func() { resultErr = finish(resultErr) }()
+
 	projectFromDb, err := s.getMutableProject(ctx, projectID)
 	switch {
 	case errors.Is(err, common.ErrProjectArchived):
@@ -1553,7 +1590,10 @@ func (s *ProjectService) CreateProject(ctx context.Context, opts CreateProjectOp
 		if envContent != nil {
 			currentEnv, readEnvErr := acfs.Host{}.ReadFile(ctx, filepath.Join(projectPath, projects.EffectiveEnvFileName))
 			if !errors.Is(readEnvErr, os.ErrNotExist) && (readEnvErr != nil || string(currentEnv) != *envContent) {
-				return nil, common.Classify(common.ErrProjectWorkspaceConflict, fmt.Errorf(".env already exists in %q with different content; clear the environment content to keep it", folderName))
+				return nil, common.Classify(
+					common.ErrProjectWorkspaceConflict,
+					fmt.Errorf(".env already exists in %q with different content; clear the environment content to keep it", folderName),
+				)
 			}
 		}
 		backup, cleanupBackup, backupProjectDirectoryErr := projects.BackupProjectDirectory(
@@ -1604,6 +1644,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, opts CreateProjectOp
 			ComposeContent:    opts.ComposeContent,
 			EnvContent:        envContent,
 			Lenient:           opts.ExactName,
+			EnvOverride:       externalSecretValidation(opts.SecretKeys),
 		}); validateComposeContentForUpdateErr != nil {
 			return nil, rollback(fmt.Errorf("invalid compose file: %w", validateComposeContentForUpdateErr))
 		}
@@ -2665,7 +2706,10 @@ func (s *ProjectService) ListProjects(ctx context.Context, params pagination.Que
 					slog.WarnContext(ctx, "failed to load known project names for compose update discovery", "error", knownErr)
 					knownProjects = projectsArray
 				}
-				items = append(items, s.listing.DiscoveredUpdateRows(ctx, snapshot.Containers, listing.KnownComposeProjectNames(projectRecords(knownProjects)), IconCatalogForContext(ctx))...)
+				items = append(
+					items,
+					s.listing.DiscoveredUpdateRows(ctx, snapshot.Containers, listing.KnownComposeProjectNames(projectRecords(knownProjects)), IconCatalogForContext(ctx))...,
+				)
 			}
 		}
 	}
@@ -3034,7 +3078,16 @@ func (s *ProjectService) SyncProjectsFromFileSystem(ctx context.Context) error {
 				reason:  "removed orphaned project: directory present but contains no compose file",
 			})
 		case resolveErr != nil:
-			slog.WarnContext(ctx, "project directory present but compose file unresolved during cleanup; keeping DB record", "projectId", p.ID, "path", p.Path, "error", resolveErr)
+			slog.WarnContext(
+				ctx,
+				"project directory present but compose file unresolved during cleanup; keeping DB record",
+				"projectId",
+				p.ID,
+				"path",
+				p.Path,
+				"error",
+				resolveErr,
+			)
 		}
 	}
 	// Pruning over half the candidates usually means an unmounted projects directory, so keep every record.
@@ -3057,7 +3110,20 @@ func (s *ProjectService) SyncProjectsFromFileSystem(ctx context.Context) error {
 	for _, decision := range deletions {
 		p := decision.project
 		if deleteErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return deleteProjectWithTags(tx, p.ID) }); deleteErr != nil {
-			slog.ErrorContext(ctx, "failed to delete project during filesystem cleanup", "projectId", p.ID, "name", p.Name, "path", p.Path, "reason", decision.reason, "error", deleteErr)
+			slog.ErrorContext(
+				ctx,
+				"failed to delete project during filesystem cleanup",
+				"projectId",
+				p.ID,
+				"name",
+				p.Name,
+				"path",
+				p.Path,
+				"reason",
+				decision.reason,
+				"error",
+				deleteErr,
+			)
 			continue
 		}
 		slog.WarnContext(ctx, "deleted project during filesystem cleanup", "projectId", p.ID, "name", p.Name, "path", p.Path, "reason", decision.reason)
@@ -3138,9 +3204,27 @@ func (s *ProjectService) upsertProjectForDir(ctx context.Context, dirName, dirPa
 		if countErr := s.db.WithContext(ctx).Model(&Project{}).
 			Where("name = ? AND path <> ? AND id <> ?", composeMetadata.ResolvedProjectName, dirPath, existing.ID).
 			Count(&duplicates).Error; countErr != nil {
-			slog.WarnContext(ctx, "failed to check duplicate compose project names during project sync", "composeProjectName", composeMetadata.ResolvedProjectName, "path", dirPath, "error", countErr)
+			slog.WarnContext(
+				ctx,
+				"failed to check duplicate compose project names during project sync",
+				"composeProjectName",
+				composeMetadata.ResolvedProjectName,
+				"path",
+				dirPath,
+				"error",
+				countErr,
+			)
 		} else if duplicates > 0 {
-			slog.WarnContext(ctx, "multiple project directories resolve to the same compose project name", "composeProjectName", composeMetadata.ResolvedProjectName, "path", dirPath, "duplicates", duplicates)
+			slog.WarnContext(
+				ctx,
+				"multiple project directories resolve to the same compose project name",
+				"composeProjectName",
+				composeMetadata.ResolvedProjectName,
+				"path",
+				dirPath,
+				"duplicates",
+				duplicates,
+			)
 		}
 	}
 	return s.reconcileComposeTagsForProject(ctx, &existing)
@@ -3178,7 +3262,10 @@ func (s *ProjectService) UpdateProject(ctx context.Context, projectID string, na
 		return nil, err
 	}
 	defer unlock()
+	return s.updateProject(ctx, projectID, name, composeContent, envContent, overrideContent, user)
+}
 
+func (s *ProjectService) updateProject(ctx context.Context, projectID string, name, composeContent, envContent, overrideContent *string, user types.Actor) (*Project, error) {
 	recoverErr := s.updates.RecoverProject(ctx, projectID)
 	proj, err := s.getMutableProject(ctx, projectID)
 	if err != nil {
@@ -3385,7 +3472,12 @@ func (s *ProjectService) applyProjectUpdate(
 			return fmt.Errorf("failed to resolve GitOps compose path for project %s: %w", proj.ID, lookupErr)
 		}
 	}
+	secretKeys, secretErr := s.secrets.SecretVariableNames(ctx, types.SecretOwner{Kind: "project", ID: proj.ID})
+	if secretErr != nil {
+		return secretErr
+	}
 	if persistFilesErr := projectsync.PersistUpdatedProjectFiles(ctx, projectsync.ProjectFilesUpdate{
+		EnvOverride:       externalSecretValidation(secretKeys),
 		ComposeContent:    composeContent,
 		EnvContent:        envContent,
 		OverrideContent:   overrideContent,
@@ -3533,7 +3625,14 @@ func (s *ProjectService) ApplyGitSyncProjectFiles(
 	// Unreadable content on either side always compares as changed.
 	afterCompose, afterEnv, afterOverride, afterErr := s.projectContent(ctx, proj.ID)
 	if beforeErr != nil || afterErr != nil {
-		slog.WarnContext(ctx, "failed to read project content for git sync change detection; treating as changed", "projectId", proj.ID, "error", errors.Join(beforeErr, afterErr))
+		slog.WarnContext(
+			ctx,
+			"failed to read project content for git sync change detection; treating as changed",
+			"projectId",
+			proj.ID,
+			"error",
+			errors.Join(beforeErr, afterErr),
+		)
 	}
 	contentChanged := beforeErr != nil || afterErr != nil || beforeCompose != afterCompose || projects.EnvContentChanged(beforeEnv, afterEnv) || beforeOverride != afterOverride
 	if contentChanged || (gitEnvContent == nil && envUpdate.State.HasGitSource) {
@@ -3657,7 +3756,14 @@ func (s *ProjectService) prepareProjectRenameVolumeMigration(
 		return nil, fmt.Errorf("failed to connect to Docker for volume rename: %w", err)
 	}
 
-	return projects.PlanVolumeMigration(ctx, dockerClient, composeProject, oldComposeName, newComposeName, volumes.ToolsImage(s.settingsService.GetSettingsConfig().ToolsImageRegistry.Value))
+	return projects.PlanVolumeMigration(
+		ctx,
+		dockerClient,
+		composeProject,
+		oldComposeName,
+		newComposeName,
+		volumes.ToolsImage(s.settingsService.GetSettingsConfig().ToolsImageRegistry.Value),
+	)
 }
 
 func (s *ProjectService) UpdateProjectServiceImages(ctx context.Context, projectID string, changes map[string]updatertypes.ServiceImageChange, options ServiceUpdateOptions) error {

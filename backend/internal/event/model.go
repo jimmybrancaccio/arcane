@@ -31,6 +31,9 @@ type (
 )
 
 const (
+	EventTypeSecretFetch                  EventType     = "secrets.fetch"
+	EventTypeSecretFetchError             EventType     = "secrets.error"
+	EventTypeSecretChanged                EventType     = "secrets.changed"
 	EventTypeContainerDie                 EventType     = "container.die"
 	EventTypeContainerOOM                 EventType     = "container.oom"
 	EventTypeContainerRename              EventType     = "container.rename"

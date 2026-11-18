@@ -130,12 +130,16 @@ func setupProjectTestDB(t *testing.T) *database.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Project{}, &ProjectTag{}, &GitOpsSync{}, &settings.SettingVariable{}, &imageupdate.ImageUpdateRecord{}, &event.Event{}, &kv.KVEntry{}))
+	require.NoError(
+		t,
+		db.AutoMigrate(&Project{}, &ProjectTag{}, &GitOpsSync{}, &settings.SettingVariable{}, &imageupdate.ImageUpdateRecord{}, &event.Event{}, &kv.KVEntry{}),
+	)
 	return &database.DB{DB: db}
 }
 
 func TestUpdateProjectWorkspaceRejectsInvalidManifestBeforeProjectLookup(t *testing.T) {
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DockerService:               newUnreachableDockerService(t),
 		BuildService:                testBuildBuilder{},
 		RegistryCredentialsProvider: testRegistryCredentials,
@@ -327,6 +331,7 @@ func TestProjectService_RefreshProjectImageRefs_PersistsBuildMetadata(t *testing
 	require.NoError(t, db.Create(proj).Error)
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -377,6 +382,7 @@ func TestProjectService_BackfillProjectImageRefs_RetriesOnlyMissingMetadata(t *t
 	require.NoError(t, db.Create(regular).Error)
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -434,6 +440,7 @@ func setupProjectDestroyTestService(t *testing.T) (*ProjectService, *database.DB
 
 	eventService := event.NewEventService(db, loadTestConfig(t), nil)
 	return NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -572,6 +579,7 @@ func TestProjectService_GetProjectFromDatabaseByID(t *testing.T) {
 
 	settingsService, _ := newSettingsServiceForTest(t, ctx, db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -608,6 +616,7 @@ func TestProjectService_GetProjectByComposeName(t *testing.T) {
 	t.Run("exact match", func(t *testing.T) {
 		db := setupProjectTestDB(t)
 		svc := NewProjectService(ProjectServiceParams{
+			Secrets:      testSecretRuntime{},
 			DB:           db,
 			EventService: event.NewEventService(db, &config.Config{}, nil),
 			ImageService: image.NewImageService(image.ImageServiceParams{
@@ -635,6 +644,7 @@ func TestProjectService_GetProjectByComposeName(t *testing.T) {
 	t.Run("normalized fallback", func(t *testing.T) {
 		db := setupProjectTestDB(t)
 		svc := NewProjectService(ProjectServiceParams{
+			Secrets:      testSecretRuntime{},
 			DB:           db,
 			EventService: event.NewEventService(db, &config.Config{}, nil),
 			ImageService: image.NewImageService(image.ImageServiceParams{
@@ -662,6 +672,7 @@ func TestProjectService_GetProjectByComposeName(t *testing.T) {
 	t.Run("display name in db, normalized compose label input", func(t *testing.T) {
 		db := setupProjectTestDB(t)
 		svc := NewProjectService(ProjectServiceParams{
+			Secrets:      testSecretRuntime{},
 			DB:           db,
 			EventService: event.NewEventService(db, &config.Config{}, nil),
 			ImageService: image.NewImageService(image.ImageServiceParams{
@@ -689,6 +700,7 @@ func TestProjectService_GetProjectByComposeName(t *testing.T) {
 	t.Run("invalidates stale normalized cache entries after deletion", func(t *testing.T) {
 		db := setupProjectTestDB(t)
 		svc := NewProjectService(ProjectServiceParams{
+			Secrets:      testSecretRuntime{},
 			DB:           db,
 			EventService: event.NewEventService(db, &config.Config{}, nil),
 			ImageService: image.NewImageService(image.ImageServiceParams{
@@ -737,6 +749,7 @@ func TestProjectService_GetProjectByComposeName(t *testing.T) {
 	t.Run("invalidates stale normalized cache entries after rename", func(t *testing.T) {
 		db := setupProjectTestDB(t)
 		svc := NewProjectService(ProjectServiceParams{
+			Secrets:      testSecretRuntime{},
 			DB:           db,
 			EventService: event.NewEventService(db, &config.Config{}, nil),
 			ImageService: image.NewImageService(image.ImageServiceParams{
@@ -820,6 +833,7 @@ func TestProjectService_PullProjectImages_UpdatesCurrentImageRecordAfterPull(t *
 		SettingsService:    settingsService,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -936,6 +950,7 @@ func TestProjectService_EnsureImagesPresent_UpdatesCurrentImageRecordAfterPull(t
 		SettingsService:    settingsService,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -1027,6 +1042,7 @@ func TestProjectService_PullImageForService_UpdatesCurrentImageRecordAfterPull(t
 		SettingsService:    settingsService,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -1113,6 +1129,7 @@ func TestProjectService_ComposePullSelectedServices_ReconcilesOnlyOnSuccess(t *t
 		SettingsService:    settingsService,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -1174,7 +1191,10 @@ func TestProjectService_ComposePullSelectedServices_ReconcilesOnlyOnSuccess(t *t
 		Enabled:  true,
 	}}
 
-	require.NoError(t, svc.composeCoordinator.PullServices(ctx, projectDef, []string{"app", "app-copy", "sidecar", "builder"}, svc.deployment.ImageOperations(nil, credentials, nil), nil))
+	require.NoError(
+		t,
+		svc.composeCoordinator.PullServices(ctx, projectDef, []string{"app", "app-copy", "sidecar", "builder"}, svc.deployment.ImageOperations(nil, credentials, nil), nil),
+	)
 	assert.Equal(t, 1, pullsByRef[privateImageRef], "duplicate service refs should only be pulled once")
 	assert.Equal(t, 1, pullsByRef[publicImageRef], "selected public image should still be pulled")
 	assert.Len(t, pullsByRef, 2, "build-backed services should not trigger image pulls")
@@ -1240,6 +1260,7 @@ func TestProjectService_ComposePullSelectedServices_LeavesRecordsWhenPullFails(t
 		SettingsService:    settingsService,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -1365,6 +1386,7 @@ func TestProjectService_UpdateProjectServicesHardFailsWhenPullFails(t *testing.T
 	}
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -1504,6 +1526,7 @@ func TestProjectService_UpdateProjectServicesForcesRecreate(t *testing.T) {
 	}
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                eventService,
@@ -1521,7 +1544,11 @@ func TestProjectService_UpdateProjectServicesForcesRecreate(t *testing.T) {
 		DiscoverTags: true,
 	})
 	require.Error(t, err)
-	assert.True(t, eventService.ShouldSuppressDaemonEvent("container", "replacement", "app", "compose-update-force"), "failed updates retain correlation through rollback grace")
+	assert.True(
+		t,
+		eventService.ShouldSuppressDaemonEvent("container", "replacement", "app", "compose-update-force"),
+		"failed updates retain correlation through rollback grace",
+	)
 	assert.False(t, eventService.ShouldSuppressDaemonEvent("container", "unrelated", "unrelated", "other-project"))
 	assert.True(t, upCalled)
 	assert.Equal(t, []string{"app", "sidecar"}, stopped)
@@ -1589,6 +1616,7 @@ func TestProjectService_UpdateProject_RenameFailsWhenVolumeMigrationPreparationF
 
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, dockerServer))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -1656,6 +1684,7 @@ func TestProjectService_ApplyProjectUpdateWithRenameJournal_AppliesVolumeMigrati
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -1741,6 +1770,7 @@ func TestProjectService_PrepareProjectRenameVolumeMigrationForUpdate_UsesCompose
 
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, dockerServer))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -1845,6 +1875,7 @@ func TestProjectService_ApplyProjectUpdateWithRenameJournal_RollsBackVolumeMigra
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -1900,6 +1931,7 @@ func TestProjectService_ApplyProjectUpdateWithRenameJournal_SucceedsCommittedRen
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -1960,6 +1992,7 @@ func TestProjectService_UpdateProject_ClearsJournalForNonRenameWhenRecoveryDocke
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2039,6 +2072,7 @@ func TestProjectService_UpdateProject_AllowsRenameAfterJournalRecoveryWithoutDoc
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2113,6 +2147,7 @@ func TestProjectService_UpdateProject_RenamesDirectoryWhenNameChanges(t *testing
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2174,6 +2209,7 @@ func TestProjectService_UpdateProject_RenameFailsWhenTargetDirectoryExists(t *te
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2233,6 +2269,7 @@ func TestProjectService_UpdateProject_RenameFailsWhenProjectRunning(t *testing.T
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2306,6 +2343,7 @@ func TestProjectService_UpdateProject_RenameRejectsStaleStoppedWhenRuntimeIsRunn
 		},
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2396,6 +2434,7 @@ func TestProjectService_RecoverStuckProjectStatuses(t *testing.T) {
 
 			server := configureProjectRuntimeDocker(t, tt.containers)
 			svc := NewProjectService(ProjectServiceParams{
+				Secrets:         testSecretRuntime{},
 				DB:              db,
 				SettingsService: settingsService,
 				EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -2443,6 +2482,7 @@ func TestProjectService_UpdateProject_RenameResolvesUnknownStoppedStatusBeforeVo
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	server := newProjectRuntimeDockerServer(t, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2528,6 +2568,7 @@ func TestProjectService_UpdateProject_RenameRejectsUnknownWhenRuntimeIsRunning(t
 	})
 	t.Setenv("DOCKER_HOST", dockerHostFromProjectRuntimeServerURL(t, server.URL))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2587,6 +2628,7 @@ func TestProjectService_UpdateProject_ValidatesComposeUsingExistingProjectName(t
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2643,6 +2685,7 @@ func TestProjectService_UpdateProject_AllowsMissingEnvFileDuringComposeValidatio
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2700,6 +2743,7 @@ func TestProjectService_UpdateProject_EnvRetargetWritesExplicitIdenticalComposeT
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2765,6 +2809,7 @@ func TestProjectService_UpdateProject_EnvRetargetWithoutComposePayloadPreservesN
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2829,6 +2874,7 @@ func TestProjectService_UpdateProject_EnvRetargetWritesEditedComposeToSelectedBa
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2889,6 +2935,7 @@ func TestProjectService_UpdateProject_AllowsMissingLocalIncludeDuringComposeVali
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -2952,6 +2999,7 @@ func TestProjectService_CreateProject_AllowsExternalInclude(t *testing.T) {
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3000,6 +3048,7 @@ func TestProjectService_UpdateProject_AllowsExternalInclude(t *testing.T) {
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3056,6 +3105,7 @@ func TestProjectService_CreateProject_CommitsWorkspaceAndConfigurationTogether(t
 	settingsService, err := newSettingsServiceForTest(t, ctx, db)
 	require.NoError(t, err)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -3121,6 +3171,7 @@ func TestProjectService_CreateProject_RollsBackInvalidWorkspaceManifest(t *testi
 	settingsService, err := newSettingsServiceForTest(t, ctx, db)
 	require.NoError(t, err)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -3162,6 +3213,7 @@ func TestProjectService_CreateProject_ArchiveAppliesRequestedName(t *testing.T) 
 	settingsService, err := newSettingsServiceForTest(t, ctx, db)
 	require.NoError(t, err)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -3248,6 +3300,7 @@ func TestProjectService_UpdateProject_UsesExistingEnvFileDuringComposeValidation
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3309,6 +3362,7 @@ func newProjectServiceForOverrideTest(t *testing.T, dirName string) (*ProjectSer
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3430,6 +3484,7 @@ func TestProjectService_UpdateProject_UsesProvidedEnvContentDuringComposeValidat
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3490,6 +3545,7 @@ func TestProjectService_UpdateProject_ReturnsEnvParseErrorDuringComposeValidatio
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3548,6 +3604,7 @@ func TestProjectService_UpdateProject_UsesGlobalEnvDuringComposeValidation(t *te
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3610,6 +3667,7 @@ func TestProjectService_UpdateProject_DoesNotResolveHostEnvThroughGlobalEnvDurin
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3667,6 +3725,7 @@ func TestProjectService_UpdateProject_DerivesProjectOverrideEnvWhenGitSourceExis
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3727,6 +3786,7 @@ func TestProjectService_UpdateProject_UnchangedGitEnvLeavesFilesUntouched(t *tes
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3837,6 +3897,7 @@ func TestProjectService_UpdateProject_DeletingGitBackedKeyFallsBackToGit(t *test
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3900,6 +3961,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_MigratesDirectEnvIntoProjectOve
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -3964,6 +4026,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_PreservesGitEnvSyntax(t *testin
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4039,6 +4102,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_NormalizesStaleCopiedGitOverrid
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4100,6 +4164,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_RemovesLegacyDeletedGitMasks(t 
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4162,6 +4227,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_RemovesGitEnvSource(t *testing.
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4219,6 +4285,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_WritesAndRemovesComposeOverride
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4293,6 +4360,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_UsesGlobalEnvDuringComposeValid
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4353,6 +4421,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_TolerantOfUndefinedComposeVar(t
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4414,6 +4483,7 @@ func TestProjectService_GetProjectDetails_ReturnsEffectiveEnvContent(t *testing.
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -4569,6 +4639,7 @@ func TestProjectService_GetProjectDetails_IncludesUpdateInfo(t *testing.T) {
 		DB: db,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -4627,7 +4698,10 @@ func TestProjectService_GetProjectDetails_RefreshesRuntimeStatusWithoutRuntimeSe
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsDir))
 
 	projectPath := createComposeProjectDir(t, projectsDir, "projectA")
-	require.NoError(t, os.WriteFile(filepath.Join(projectPath, "compose.yaml"), []byte("services:\n  server:\n    image: nginx:alpine\n  worker:\n    image: busybox:latest\n"), 0o644))
+	require.NoError(
+		t,
+		os.WriteFile(filepath.Join(projectPath, "compose.yaml"), []byte("services:\n  server:\n    image: nginx:alpine\n  worker:\n    image: busybox:latest\n"), 0o644),
+	)
 
 	server := newProjectRuntimeDockerServer(t, []container.Summary{
 		{
@@ -4679,6 +4753,7 @@ func TestProjectService_GetProjectDetails_RefreshesRuntimeStatusWithoutRuntimeSe
 
 	t.Setenv("DOCKER_HOST", dockerHostFromProjectRuntimeServerURL(t, server.URL))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -4744,6 +4819,7 @@ func TestProjectService_GetProjectDetails_PopulatesRuntimeServicesFromComposePs(
 
 	t.Setenv("DOCKER_HOST", dockerHostFromProjectRuntimeServerURL(t, server.URL))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -4815,6 +4891,7 @@ func TestProjectService_ListProjects_FiltersByUpdateStatus(t *testing.T) {
 		DB: db,
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -5059,6 +5136,7 @@ func TestBuildDiscoveredComposeProjectUpdateRows_FallsBackToImageID(t *testing.T
 	require.NoError(t, settingsErr)
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", t.TempDir()))
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		ImageService:                imageService,
@@ -5116,6 +5194,7 @@ func TestProjectService_ListProjects_FiltersArchivedProjects(t *testing.T) {
 	}).Error)
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5181,6 +5260,7 @@ func TestProjectService_ListProjects_FiltersByExactName(t *testing.T) {
 	}
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5244,6 +5324,7 @@ func TestProjectService_ArchiveProject_RequiresStoppedProject(t *testing.T) {
 		},
 	})
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5286,6 +5367,7 @@ func TestProjectService_ArchiveProject_TogglesArchiveFlag(t *testing.T) {
 	}).Error)
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5345,6 +5427,7 @@ func TestProjectService_ArchiveProject_LiveVerificationErrorPolicy(t *testing.T)
 	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:1")
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5396,6 +5479,7 @@ func TestProjectService_ListProjects_PersistsInferredServiceCount(t *testing.T) 
 		}},
 	}
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5447,6 +5531,7 @@ func TestProjectService_ListProjects_WithDerivedStatusFilter_AllowsAllPageSizeSe
 	}
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5499,6 +5584,7 @@ func TestProjectService_DeployProject_StopsOnBuildPreparationError(t *testing.T)
 
 	buildSvc := testBuildBuilder{err: errors.New("boom build")}
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5549,6 +5635,7 @@ func TestProjectService_DeployProject_BuildsGeneratedImageWithoutPull(t *testing
 
 	buildSvc := testBuildBuilder{err: errors.New("boom build")}
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5589,6 +5676,7 @@ func TestProjectService_SyncProjectsFromFileSystem_IgnoresSymlinkedProjectDirsWh
 	require.NoError(t, settingsService.UpdateSetting(ctx, "followProjectSymlinks", "false"))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5628,6 +5716,7 @@ func TestProjectService_SyncProjectsFromFileSystem_DetectsSymlinkedProjectDirsWh
 	require.NoError(t, settingsService.UpdateSetting(ctx, "followProjectSymlinks", "true"))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5664,6 +5753,7 @@ func TestProjectService_SyncProjectsFromFileSystem_DiscoversNestedProjectsAndRel
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5711,6 +5801,7 @@ func TestProjectService_SyncProjectsFromFileSystem_RespectsConfiguredScanMaxDept
 	require.NoError(t, settingsService.SetIntSetting(ctx, "projectScanMaxDepth", 1))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5771,6 +5862,7 @@ services:
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5810,6 +5902,7 @@ func TestProjectService_SyncProjectsFromFileSystem_RemovesDeletedNestedProject(t
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5859,6 +5952,7 @@ func TestProjectService_SyncProjectsFromFileSystem_PrunesLeakedScratchRow(t *tes
 	}).Error)
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5902,6 +5996,7 @@ func TestProjectService_SyncProjectsFromFileSystem_PreservesProjectsWhenDirector
 	}
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5935,6 +6030,7 @@ func TestProjectService_SyncProjectsFromFileSystem_PreservesProjectWithAmbiguous
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -5982,6 +6078,7 @@ func TestProjectService_SyncProjectsFromFileSystem_RemovesProjectsBeyondReducedS
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	defaultSvc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6004,6 +6101,7 @@ func TestProjectService_SyncProjectsFromFileSystem_RemovesProjectsBeyondReducedS
 	// Lowering the scan depth prunes the nested project even though its compose file still exists.
 	require.NoError(t, settingsService.SetIntSetting(ctx, "projectScanMaxDepth", 1))
 	depthLimitedSvc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6049,6 +6147,7 @@ func TestProjectService_SyncProjectsFromFileSystem_PreservesDBRecordsWhenDirecto
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6118,6 +6217,7 @@ func TestProjectService_SyncProjectsFromFileSystem_DiscoversReadableProjectsDesp
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6166,6 +6266,7 @@ func TestProjectService_SyncProjectsFromFileSystem_AllowsDuplicateLeafDirectorie
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6210,6 +6311,7 @@ func TestProjectService_SyncProjectsFromFileSystem_DetectsNestedSymlinkedProject
 	require.NoError(t, settingsService.UpdateSetting(ctx, "followProjectSymlinks", "true"))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6254,6 +6356,7 @@ func TestProjectService_SyncProjectsFromFileSystem_RemovesSymlinkedProjectsWhenD
 	require.NoError(t, settingsService.UpdateSetting(ctx, "followProjectSymlinks", "true"))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6297,6 +6400,7 @@ func TestProjectService_SyncProjectsFromFileSystem_RefreshesServiceCountOnCompos
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6342,6 +6446,7 @@ services:
 `), 0o644))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6388,6 +6493,7 @@ func TestProjectService_SyncProjectsFromFileSystem_PreservesValidCustomNameWitho
 	require.NoError(t, db.Create(project).Error)
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6451,6 +6557,7 @@ func TestProjectService_SyncProjectsFromFileSystem_PreservesGitOpsProjectWithCus
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6514,6 +6621,7 @@ func TestProjectService_GetProjectDetails_UsesGitOpsCustomComposeFilename(t *tes
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsRoot))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -6559,6 +6667,7 @@ func TestProjectService_UpdateProject_WritesThroughSymlinkedProjectPath(t *testi
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -6627,6 +6736,7 @@ func TestProjectService_UpdateProject_WritesThroughExternalEnvSymlink(t *testing
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -6699,6 +6809,7 @@ func TestProjectService_UpdateProject_RestoresExternalEnvSymlinkTargetWhenProjec
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -6874,6 +6985,7 @@ func TestProjectService_RecoverProjectRenameJournals_RollsBackUncommittedDirecto
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -6939,6 +7051,7 @@ func TestProjectService_RecoverProjectRenameJournals_StartedPhaseSkipsVolumeRoll
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7013,6 +7126,7 @@ func TestProjectService_RecoverProjectRenameJournals_RelocatesTargetWhenBothPath
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7087,6 +7201,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsStartedJournalWhenDir
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7163,6 +7278,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsPreservedTargetJourna
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7227,6 +7343,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsCommittedJournal(t *t
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7278,6 +7395,7 @@ func TestProjectService_FinalizeProjectRenameAfterCommit_ClearsJournalAfterSourc
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7330,6 +7448,7 @@ func TestProjectService_FinalizeProjectRenameAfterCommit_KeepsJournalWhenSourceC
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7426,6 +7545,7 @@ func TestProjectService_RecoverProjectRenameJournals_KeepsJournalWhenDirectoryRo
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7531,6 +7651,7 @@ func TestProjectService_RecoverProjectRenameJournals_CompletesCommittedVolumeJou
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7615,6 +7736,7 @@ func TestProjectService_RecoverProjectRenameJournals_RollsBackCommittedJournalWh
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7736,6 +7858,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsJournalAfterDBRestore
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7824,6 +7947,7 @@ func TestProjectService_RecoverProjectRenameJournals_KeepsRollbackCleanupWhenDoc
 
 	kvService := kv.NewKVService(db)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7898,6 +8022,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsCommittedJournalWhenS
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -7995,6 +8120,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsCommittedJournalAndCl
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8089,6 +8215,7 @@ func TestProjectService_RecoverProjectRenameJournals_MarksSourceCleanupPendingWh
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8185,6 +8312,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsSourceCleanupPendingJ
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8295,6 +8423,7 @@ func TestProjectService_RecoverProjectRenameJournals_RollsBackSourceCleanupPendi
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8396,6 +8525,7 @@ func TestProjectService_RecoverProjectRenameJournals_KeepsSourceCleanupPendingJo
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8498,6 +8628,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsMissingPathJournalWhe
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8583,6 +8714,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsJournalWhenRollbackSo
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8673,6 +8805,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsJournalWhenRollbackTa
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8769,6 +8902,7 @@ func TestProjectService_RecoverProjectRenameJournals_ClearsJournalWhenTargetPres
 	kvService := kv.NewKVService(db)
 	dockerService := newSettingsDockerService(t, newTestDockerClient(t, server))
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -8817,6 +8951,7 @@ func TestProjectPathMapperUsesCurrentSettings(t *testing.T) {
 	settingsService, err := newSettingsServiceForTest(t, t.Context(), db)
 	require.NoError(t, err)
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		SettingsService:             settingsService,
 		DockerService:               newUnreachableDockerService(t),
 		BuildService:                testBuildBuilder{},
@@ -8957,6 +9092,7 @@ func TestUpdateProjectServiceImagesRejectsManagedOrArchived(t *testing.T) {
 			}
 			require.NoError(t, db.Create(&proj).Error)
 			service := NewProjectService(ProjectServiceParams{
+				Secrets:      testSecretRuntime{},
 				DB:           db,
 				EventService: event.NewEventService(db, &config.Config{}, nil),
 				ImageService: image.NewImageService(image.ImageServiceParams{
@@ -9012,6 +9148,7 @@ func TestUpdateProjectServiceImagesPersistsBeforeDeploymentAndRetries(t *testing
 	}
 	pullDocker := newSettingsDockerService(t, newTestDockerClient(t, newImagePullServerWithObserver(t, nil, nil)))
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -9070,6 +9207,7 @@ func TestUpdateProjectServiceImagesRejectsOverrideBeforeWriting(t *testing.T) {
 	proj := &Project{ID: "image-overrides", Name: "image-overrides", Path: projectPath}
 	require.NoError(t, db.Create(proj).Error)
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -9142,7 +9280,12 @@ func TestDiscoveredProjectTagUpdatesRemainScoped(t *testing.T) {
 				"com.docker.compose.service": "web",
 			},
 		},
-		{ID: "second", Image: "example:3.1.0", ImageID: "shared", Labels: map[string]string{"com.docker.compose.project": "second-project", "com.docker.compose.service": "web"}},
+		{
+			ID:      "second",
+			Image:   "example:3.1.0",
+			ImageID: "shared",
+			Labels:  map[string]string{"com.docker.compose.project": "second-project", "com.docker.compose.service": "web"},
+		},
 	}
 	imageSvc := image.NewImageService(image.ImageServiceParams{
 		DB: db,
@@ -9156,6 +9299,7 @@ func TestDiscoveredProjectTagUpdatesRemainScoped(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, settingsService.UpdateSetting(t.Context(), "projectsDirectory", t.TempDir()))
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -9276,6 +9420,7 @@ func TestCountProjectsWithPendingTagUpdatesUsesRuntimeContainers(t *testing.T) {
 		).Error,
 	)
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -9299,7 +9444,12 @@ func TestCountProjectsWithPendingTagUpdatesUsesRuntimeContainers(t *testing.T) {
 				"com.docker.compose.service": "web",
 			},
 		},
-		{ID: "second-container", Image: "example:3.1.0", ImageID: "shared", Labels: map[string]string{"com.docker.compose.project": "second", "com.docker.compose.service": "web"}},
+		{
+			ID:      "second-container",
+			Image:   "example:3.1.0",
+			ImageID: "shared",
+			Labels:  map[string]string{"com.docker.compose.project": "second", "com.docker.compose.service": "web"},
+		},
 	}
 	allProjects, err := service.ListAllProjects(t.Context())
 	require.NoError(t, err)
@@ -9311,9 +9461,17 @@ func TestCountProjectsWithPendingTagUpdatesUsesRuntimeContainers(t *testing.T) {
 
 	// A digest check under another local tag of the image marks the project once, however many replicas share it.
 	require.NoError(t, db.Create(&Project{Name: "third", Path: "third", ImageRefsJSON: `["app:latest"]`}).Error)
-	require.NoError(t, db.Create(&imageupdate.ImageUpdateRecord{ID: "moving-image", Repository: "docker.io/library/app", Tag: "stable", HasUpdate: true, UpdateType: "digest"}).Error)
+	require.NoError(
+		t,
+		db.Create(&imageupdate.ImageUpdateRecord{ID: "moving-image", Repository: "docker.io/library/app", Tag: "stable", HasUpdate: true, UpdateType: "digest"}).Error,
+	)
 	containers = append(containers,
-		container.Summary{ID: "third-one", Image: "app:latest", ImageID: "moving-image", Labels: map[string]string{"com.docker.compose.project": "third", "com.docker.compose.service": "web"}},
+		container.Summary{
+			ID:      "third-one",
+			Image:   "app:latest",
+			ImageID: "moving-image",
+			Labels:  map[string]string{"com.docker.compose.project": "third", "com.docker.compose.service": "web"},
+		},
 		container.Summary{
 			ID:      "third-two",
 			Image:   "app:latest",
@@ -9415,6 +9573,7 @@ func TestProjectServiceManualUpdateDiscoversTags(t *testing.T) {
 				HTTPClient:      &http.Client{Transport: transport},
 			})
 			service := NewProjectService(ProjectServiceParams{
+				Secrets:         testSecretRuntime{},
 				DB:              db,
 				SettingsService: settingsService,
 				EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -9472,6 +9631,7 @@ func TestProjectServiceManualUpdateRejectsUnsafeTagPolicies(t *testing.T) {
 			serviceConfig := composetypes.ServiceConfig{Image: "app:1.2.0", Labels: composetypes.Labels{labels.LabelUpdateStrategy: "tag"}}
 			tt.change(&serviceConfig)
 			service := NewProjectService(ProjectServiceParams{
+				Secrets:                     testSecretRuntime{},
 				DockerService:               newUnreachableDockerService(t),
 				BuildService:                testBuildBuilder{},
 				RegistryCredentialsProvider: testRegistryCredentials,
@@ -9484,6 +9644,7 @@ func TestProjectServiceManualUpdateRejectsUnsafeTagPolicies(t *testing.T) {
 	}
 	local := composetypes.ServiceConfig{Name: "app", Image: "app:1.2.0", Build: &composetypes.BuildConfig{Context: "."}}
 	emptyService := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DockerService:               newUnreachableDockerService(t),
 		BuildService:                testBuildBuilder{},
 		RegistryCredentialsProvider: testRegistryCredentials,
@@ -9506,8 +9667,22 @@ func TestConfiguredProjectTagChecksMatchCurrentServicePolicy(t *testing.T) {
 	require.Nil(t, unknown.ServiceUpdates["next"].UpdateInfo)
 	firstTarget, secondTarget := "3.2.0", "4.0.0"
 	records := []imageupdate.ImageUpdateRecord{
-		{ProjectID: "project", ServiceName: "stable", PolicyKey: imageref.UpdatePolicyKey(services[0].Image, services[0].Labels), HasUpdate: true, UpdateType: "tag", LatestVersion: &firstTarget},
-		{ProjectID: "project", ServiceName: "next", PolicyKey: imageref.UpdatePolicyKey(services[1].Image, services[1].Labels), HasUpdate: true, UpdateType: "tag", LatestVersion: &secondTarget},
+		{
+			ProjectID:     "project",
+			ServiceName:   "stable",
+			PolicyKey:     imageref.UpdatePolicyKey(services[0].Image, services[0].Labels),
+			HasUpdate:     true,
+			UpdateType:    "tag",
+			LatestVersion: &firstTarget,
+		},
+		{
+			ProjectID:     "project",
+			ServiceName:   "next",
+			PolicyKey:     imageref.UpdatePolicyKey(services[1].Image, services[1].Labels),
+			HasUpdate:     true,
+			UpdateType:    "tag",
+			LatestVersion: &secondTarget,
+		},
 	}
 	checked := BuildConfiguredUpdateInfo("project", services, byRef, records)
 	require.Equal(t, "has_update", checked.Status)
@@ -9544,13 +9719,24 @@ func TestStoppedProjectTagPolicyNeverInheritsSharedDigestCheck(t *testing.T) {
 			0o644,
 		),
 	)
-	projectRecord := &Project{ID: "tag-stopped", Name: "tag-stopped", DirName: new("tag-stopped"), Path: projectPath, Status: ProjectStatusStopped, ImageRefsJSON: `["nginx:3.1.0"]`}
+	projectRecord := &Project{
+		ID:            "tag-stopped",
+		Name:          "tag-stopped",
+		DirName:       new("tag-stopped"),
+		Path:          projectPath,
+		Status:        ProjectStatusStopped,
+		ImageRefsJSON: `["nginx:3.1.0"]`,
+	}
 	require.NoError(t, db.Create(projectRecord).Error)
-	require.NoError(t, db.Create(&imageupdate.ImageUpdateRecord{ID: "shared-digest", Repository: "docker.io/library/nginx", Tag: "3.1.0", UpdateType: "digest", CheckTime: time.Now()}).Error)
+	require.NoError(
+		t,
+		db.Create(&imageupdate.ImageUpdateRecord{ID: "shared-digest", Repository: "docker.io/library/nginx", Tag: "3.1.0", UpdateType: "digest", CheckTime: time.Now()}).Error,
+	)
 	imageService := image.NewImageService(image.ImageServiceParams{
 		DB: db,
 	})
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		DB:                          db,
 		SettingsService:             settingsService,
 		EventService:                event.NewEventService(db, &config.Config{}, nil),
@@ -9659,6 +9845,7 @@ func TestConfiguredProjectUsesScheduledRuntimeChecks(t *testing.T) {
 			runtimeLabels[labels.LabelUpdateConstraint] = cmp.Or(tt.runtimeConstraint, runtimeLabels[labels.LabelUpdateConstraint])
 			runtimeServices := []types.ProjectRuntimeService{{Name: "web", ContainerID: "scheduled-container", Image: "example:3.1.0", ContainerLabels: runtimeLabels}}
 			service := NewProjectService(ProjectServiceParams{
+				Secrets:         testSecretRuntime{},
 				DB:              db,
 				SettingsService: settingsService,
 				EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -9869,6 +10056,7 @@ func TestProjectService_ApplyGitSyncProjectFiles_TolerantOfPermissionLockedEnv(t
 
 	eventService := event.NewEventService(db, &config.Config{}, nil)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    eventService,
@@ -10017,6 +10205,7 @@ func newEnvDirectoryProject(t *testing.T, id string) (*ProjectService, *Project,
 	require.NoError(t, settingsService.UpdateSetting(ctx, "projectsDirectory", projectsDir))
 
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -10240,6 +10429,7 @@ func TestComposeFile(t *testing.T) {
 func TestProjectTags_ReconcilePreservesUIAndComposeOwnershipIsReadOnly(t *testing.T) {
 	db := setupProjectTestDB(t)
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:      testSecretRuntime{},
 		DB:           db,
 		EventService: event.NewEventService(db, &config.Config{}, nil),
 		ImageService: image.NewImageService(image.ImageServiceParams{
@@ -10267,7 +10457,11 @@ func TestProjectTags_ReconcilePreservesUIAndComposeOwnershipIsReadOnly(t *testin
 		Attached: true,
 	}, types.Actor{})
 	require.NoError(t, err)
-	require.Equal(t, []types.ProjectTag{{Name: "database", Color: types.ProjectTagColorPurple, Sources: []types.ProjectTagSource{types.ProjectTagSourceUI}}}, projectTags)
+	require.Equal(
+		t,
+		[]types.ProjectTag{{Name: "database", Color: types.ProjectTagColorPurple, Sources: []types.ProjectTagSource{types.ProjectTagSourceUI}}},
+		projectTags,
+	)
 
 	require.NoError(t, service.reconcileComposeProjectTags(ctx, projectModel.ID, []types.ProjectTagOption{
 		{Name: "DATABASE", Color: types.ProjectTagColorBlue},
@@ -10324,6 +10518,7 @@ func TestProjectTags_FilterUsesExactORNames(t *testing.T) {
 	settingsService, err := newSettingsServiceForTest(t, ctx, db)
 	require.NoError(t, err)
 	svc := NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),
@@ -10695,6 +10890,7 @@ func TestRunPreDeploy_PathTraversalRejected(t *testing.T) {
 
 func discoveryListingForTest(t *testing.T, imageService *image.ImageService) *listing.Service {
 	service := NewProjectService(ProjectServiceParams{
+		Secrets:                     testSecretRuntime{},
 		ImageService:                imageService,
 		DockerService:               newUnreachableDockerService(t),
 		BuildService:                testBuildBuilder{},
@@ -10705,7 +10901,7 @@ func discoveryListingForTest(t *testing.T, imageService *image.ImageService) *li
 
 func TestListProjectReferencesIncludesArchivedProjects(t *testing.T) {
 	db := setupProjectTestDB(t)
-	service := &ProjectService{db: db}
+	service := &ProjectService{secrets: testSecretRuntime{}, db: db}
 	require.NoError(t, db.Create(&Project{ID: "project-active", Name: "active", Path: "/projects/active", Status: ProjectStatusStopped}).Error)
 	require.NoError(t, db.Create(&Project{ID: "project-archived", Name: "archived", Path: "/projects/archived", Status: ProjectStatusStopped, IsArchived: true}).Error)
 
@@ -10757,7 +10953,7 @@ func TestAggregateProjectsMergesEnvironments(t *testing.T) {
 		}
 		return out
 	}
-	svc := &ProjectService{}
+	svc := &ProjectService{secrets: testSecretRuntime{}}
 
 	t.Run("sorts by name across environments and pages", func(t *testing.T) {
 		ctx, queries := projectScopeContext(t, "/api/agents/a,b,c/projects?start=0&limit=2&sort=name&order=asc", bodies)
@@ -10783,14 +10979,20 @@ func TestAggregateProjectsMergesEnvironments(t *testing.T) {
 
 	t.Run("sorts by service count descending", func(t *testing.T) {
 		ctx, _ := projectScopeContext(t, "/api/agents/a,b,c/projects", bodies)
-		body, err := svc.AggregateProjects(ctx, pagination.QueryParams{SortParams: pagination.SortParams{Sort: "serviceCount", Order: pagination.SortDesc}, Params: pagination.Params{Limit: -1}})
+		body, err := svc.AggregateProjects(
+			ctx,
+			pagination.QueryParams{SortParams: pagination.SortParams{Sort: "serviceCount", Order: pagination.SortDesc}, Params: pagination.Params{Limit: -1}},
+		)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"b/cache", "a/web", "a/db"}, rowLabels(body.Data))
 	})
 
 	t.Run("sorts by environment", func(t *testing.T) {
 		ctx, queries := projectScopeContext(t, "/api/agents/a,b,c/projects?sort=environment&order=desc", bodies)
-		body, err := svc.AggregateProjects(ctx, pagination.QueryParams{SortParams: pagination.SortParams{Sort: "environment", Order: pagination.SortDesc}, Params: pagination.Params{Limit: -1}})
+		body, err := svc.AggregateProjects(
+			ctx,
+			pagination.QueryParams{SortParams: pagination.SortParams{Sort: "environment", Order: pagination.SortDesc}, Params: pagination.Params{Limit: -1}},
+		)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"b/cache", "a/web", "a/db"}, rowLabels(body.Data))
 		query, _ := queries.Load("a")
@@ -10812,7 +11014,7 @@ func TestAggregateProjectCountsSumsEnvironments(t *testing.T) {
 		"b": types.ApiResponse[types.ProjectStatusCounts]{Success: true, Data: types.ProjectStatusCounts{RunningProjects: 1, StoppedProjects: 3, TotalProjects: 4, UpdatesAvailable: 2}},
 	})
 
-	body, err := (&ProjectService{}).AggregateProjectCounts(ctx)
+	body, err := (&ProjectService{secrets: testSecretRuntime{}}).AggregateProjectCounts(ctx)
 	require.NoError(t, err)
 
 	assert.True(t, body.Success)
@@ -10830,7 +11032,7 @@ func TestAggregateProjectTagsUnionsByName(t *testing.T) {
 		"b": types.ApiResponse[[]types.ProjectTagOption]{Success: true, Data: []types.ProjectTagOption{{Name: "api", Color: "green"}, {Name: "prod", Color: "gray"}}},
 	})
 
-	body, err := (&ProjectService{}).AggregateProjectTags(ctx)
+	body, err := (&ProjectService{secrets: testSecretRuntime{}}).AggregateProjectTags(ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, []types.ProjectTagOption{{Name: "api", Color: "green"}, {Name: "prod", Color: "red"}, {Name: "web", Color: "blue"}}, body.Data)
@@ -10877,6 +11079,7 @@ func newMultiRootProjectService(t *testing.T, extras []types.ProjectsDirectoryEn
 	require.NoError(t, err)
 	require.NoError(t, settingsService.UpdateSetting(t.Context(), "projectsDirectories", string(extrasJSON)))
 	return NewProjectService(ProjectServiceParams{
+		Secrets:         testSecretRuntime{},
 		DB:              db,
 		SettingsService: settingsService,
 		EventService:    event.NewEventService(db, &config.Config{}, nil),

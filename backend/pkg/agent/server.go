@@ -64,6 +64,7 @@ func NewTunnelServer(opts TunnelServerOptions) *TunnelServer {
 		resolver:        opts.Resolver,
 		statusCallback:  opts.StatusCallback,
 		eventCallback:   opts.EventCallback,
+		secretCallback:  opts.SecretCallback,
 		streamWindowMiB: opts.StreamWindowMiB,
 	}
 }

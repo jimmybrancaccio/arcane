@@ -29,6 +29,7 @@ import (
 
 type (
 	Service struct {
+		secrets       types.SwarmSecretHooks
 		docker        *dockerInternal.DockerClientService
 		ensureManager func(ctx context.Context) error
 		listTasks     func(ctx context.Context, filters client.Filters, params pagination.QueryParams) ([]types.SwarmTaskSummary, pagination.Response, error)
@@ -68,8 +69,9 @@ func NewService(
 	dockerService *dockerInternal.DockerClientService,
 	ensureManager func(ctx context.Context) error,
 	listTasks func(ctx context.Context, filters client.Filters, params pagination.QueryParams) ([]types.SwarmTaskSummary, pagination.Response, error),
+	secrets types.SwarmSecretHooks,
 ) *Service {
-	return &Service{docker: dockerService, ensureManager: ensureManager, listTasks: listTasks}
+	return &Service{secrets: secrets, docker: dockerService, ensureManager: ensureManager, listTasks: listTasks}
 }
 
 func (s *Service) ListServicesPaginated(ctx context.Context, params pagination.QueryParams) ([]types.SwarmServiceSummary, pagination.Response, error) {
@@ -138,6 +140,18 @@ func (s *Service) GetService(ctx context.Context, serviceID string) (*types.Swar
 	}
 	service := serviceResult.Service
 
+	if service.Spec.TaskTemplate.ContainerSpec != nil {
+		config := service.Spec.TaskTemplate.ContainerSpec
+		var secretKeys []string
+		if decodeErr := json.Unmarshal([]byte(config.Labels["getarcane.app/secret-keys"]), &secretKeys); decodeErr == nil {
+			for index, entry := range config.Env {
+				key, _, _ := strings.Cut(entry, "=")
+				if slices.Contains(secretKeys, key) {
+					config.Env[index] = key + "=[REDACTED]"
+				}
+			}
+		}
+	}
 	inspect := types.NewSwarmServiceInspect(service)
 	inspect.Nodes = s.resolveServiceNodeNames(ctx, serviceID)
 	inspect.NetworkDetails = s.enrichServiceNetworkDetails(ctx, service.Spec.TaskTemplate.Networks)
@@ -299,6 +313,15 @@ func (s *Service) CreateService(ctx context.Context, req types.SwarmServiceCreat
 
 	optionsPayload := kit.FromPtr(req.Options)
 
+	owner := types.SecretOwner{Kind: "service", ID: spec.Name}
+	resolved, secretErr := s.secrets.Resolve(ctx, owner)
+	if secretErr != nil {
+		return nil, secretErr
+	}
+	spec, secretErr = s.secrets.Prepare(ctx, spec, resolved)
+	if secretErr != nil {
+		return nil, secretErr
+	}
 	sanitizeServiceSpec(&spec)
 
 	resp, err := s.docker.Call(ctx, func(ctx context.Context, dockerClient *client.Client) (client.ServiceCreateResult, error) {
@@ -312,6 +335,9 @@ func (s *Service) CreateService(ctx context.Context, req types.SwarmServiceCreat
 		return nil, fmt.Errorf("failed to create swarm service: %w", err)
 	}
 
+	if recordErr := s.secrets.Record(ctx, owner, resolved); recordErr != nil {
+		return nil, recordErr
+	}
 	return &types.SwarmServiceCreateResponse{
 		ID:       resp.ID,
 		Warnings: resp.Warnings,
@@ -336,6 +362,18 @@ func (s *Service) UpdateService(ctx context.Context, serviceID string, req types
 
 	optionsPayload := kit.FromPtr(req.Options)
 
+	owner := types.SecretOwner{Kind: "service", ID: serviceID}
+	if restoreErr := s.restoreManagedEnvironment(ctx, serviceID, &req.Spec); restoreErr != nil {
+		return nil, restoreErr
+	}
+	resolved, secretErr := s.secrets.Resolve(ctx, owner)
+	if secretErr != nil {
+		return nil, secretErr
+	}
+	req.Spec, secretErr = s.secrets.Prepare(ctx, req.Spec, resolved)
+	if secretErr != nil {
+		return nil, secretErr
+	}
 	sanitizeServiceSpec(&req.Spec)
 
 	resp, err := s.docker.Call(ctx, func(ctx context.Context, dockerClient *client.Client) (client.ServiceUpdateResult, error) {
@@ -352,6 +390,9 @@ func (s *Service) UpdateService(ctx context.Context, serviceID string, req types
 		return nil, fmt.Errorf("failed to update swarm service: %w", err)
 	}
 
+	if recordErr := s.secrets.Record(ctx, owner, resolved); recordErr != nil {
+		return nil, recordErr
+	}
 	return &types.SwarmServiceUpdateResponse{
 		Warnings: resp.Warnings,
 	}, nil

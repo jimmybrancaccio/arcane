@@ -104,6 +104,7 @@ func newEnrollmentTestHarness(t *testing.T) enrollmentTestHarness {
 	})
 
 	swarmSvc := swarm.NewSwarmService(swarm.SwarmServiceParams{
+		Secrets:            testSecretRuntime{},
 		SettingsService:    settingsSvc,
 		KVService:          kv.NewKVService(db),
 		EnvironmentService: envSvc,

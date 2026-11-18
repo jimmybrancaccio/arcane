@@ -18,6 +18,8 @@ import (
 
 type (
 	StackDeployOptions struct {
+		EnvOverride          map[string]string
+		PrepareService       func(context.Context, swarm.ServiceSpec) (swarm.ServiceSpec, error)
 		RegistryAuthForImage func(context.Context, string) (string, error)
 		PathMapper           *projects.PathMapper
 		Name                 string
@@ -47,6 +49,7 @@ func DeployStack(ctx context.Context, dockerClient *dockerclient.Client, opts St
 		ComposeContent:  opts.ComposeContent,
 		OverrideContent: opts.OverrideContent,
 		EnvContent:      opts.EnvContent,
+		EnvOverride:     opts.EnvOverride,
 		WorkingDir:      opts.WorkingDir,
 		PathMapper:      opts.PathMapper,
 	})
@@ -158,6 +161,12 @@ func reconcileStackServices(
 		spec, err := buildServiceSpec(service, ns, stackLabels, networkNameByKey, configMetaByKey, secretMetaByKey, project.Volumes)
 		if err != nil {
 			return nil, invalidStackError(fmt.Errorf("service %s: %w", service.Name, err))
+		}
+		if opts.PrepareService != nil {
+			spec, err = opts.PrepareService(ctx, spec)
+			if err != nil {
+				return nil, err
+			}
 		}
 		desiredServices[spec.Name] = struct{}{}
 

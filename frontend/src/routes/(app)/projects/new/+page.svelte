@@ -1,4 +1,12 @@
 <script lang="ts">
+	import SecretBindings from '#lib/components/secret-bindings.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as ResponsiveDialog from '#lib/components/ui/responsive-dialog/index.js';
+	import { secretSourceService } from '#lib/services/secret-source-service.js';
+	import type { SecretBindingWrite } from '#lib/types/secret-source.js';
+	let pendingSecrets = $state<SecretBindingWrite | null>(null);
+	let showSecrets = $state(false);
+
 	import { goto, refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -243,10 +251,24 @@
 					workspaceDraft.toDrafts(),
 					newProjectTags,
 					destination,
-					directory
+					directory,
+					pendingSecrets?.mappings.filter((mapping) => mapping.delivery === 'environment').map((mapping) => mapping.name) ?? []
 				),
 			failureMessage: (name) => m.common_create_failed({ resource: `${m.resource_project()} "${name}"` }),
 			onSuccess: async (project, { name }) => {
+				if (pendingSecrets) {
+					const bound = await tryCatch(
+						secretSourceService.saveBinding(destination, '', { ...pendingSecrets, owner: { kind: 'project', id: project.id } })
+					);
+					if (bound.error) {
+						toast.error(m.secret_operation_failed(), { description: extractApiErrorMessage(bound.error) });
+						await goto(
+							resolve(`/(app)/projects/[projectId]?env=${encodeURIComponent(destination)}&tab=secrets`, { projectId: project.id })
+						);
+						return;
+					}
+				}
+
 				toast.success(
 					m.common_create_success({ resource: `${m.resource_project()} "${name}"` }),
 					activityToastOptions(extractActivityId(project))
@@ -385,6 +407,12 @@
 			variant="prefix"
 		/>
 		<ProjectDirectorySelect bind:value={pickedDirectory} environmentId={currentEnvId} />
+		<Button
+			variant="outline"
+			onclick={() => {
+				showSecrets = true;
+			}}>{m.secret_sources()}</Button
+		>
 		<EditableName
 			bind:value={inputs.name.value}
 			displayValue={effectiveName}
@@ -600,3 +628,14 @@
 	onSelect={composeHandlers.handleTemplateSelect}
 	onDownloadSuccess={refreshAll}
 />
+
+<ResponsiveDialog.Root bind:open={showSecrets} title={m.secret_sources()} contentClass="sm:max-w-4xl">
+	<SecretBindings
+		environmentId={currentEnvId}
+		owner={{ kind: 'project', id: '' }}
+		onDraft={(value) => {
+			pendingSecrets = value;
+			showSecrets = false;
+		}}
+	/>
+</ResponsiveDialog.Root>

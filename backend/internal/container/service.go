@@ -63,6 +63,7 @@ import (
 
 type (
 	ContainerService struct {
+		secrets         types.SecretRuntime
 		dockerService   *dockerInternal.DockerClientService
 		eventService    *event.EventService
 		imageService    *image.ImageService
@@ -115,6 +116,7 @@ type (
 	}
 
 	ContainerServiceParams struct {
+		Secrets types.SecretRuntime
 		fx.In
 
 		EventService    *event.EventService
@@ -160,6 +162,7 @@ var (
 
 func NewContainerService(p ContainerServiceParams) *ContainerService {
 	return &ContainerService{
+		secrets:         p.Secrets,
 		eventService:    p.EventService,
 		dockerService:   p.DockerService,
 		imageService:    p.ImageService,
@@ -290,7 +293,16 @@ func (s *ContainerService) RecoverInterruptedRedeploys(ctx context.Context) erro
 			continue
 		}
 		if backup.ID != journal.OriginalID {
-			slog.WarnContext(ctx, "Skipping redeploy backup recovery: container is not the one Arcane renamed", "container", journal.BackupName, "id", backup.ID, "journaledId", journal.OriginalID)
+			slog.WarnContext(
+				ctx,
+				"Skipping redeploy backup recovery: container is not the one Arcane renamed",
+				"container",
+				journal.BackupName,
+				"id",
+				backup.ID,
+				"journaledId",
+				journal.OriginalID,
+			)
 			s.clearRedeployJournal(ctx, journal.OriginalID)
 			skipped++
 			continue
@@ -325,7 +337,14 @@ func (s *ContainerService) RecoverInterruptedRedeploys(ctx context.Context) erro
 			s.clearRedeployJournal(ctx, journal.OriginalID)
 			byName[journal.OriginalName] = backup
 			restored++
-			slog.WarnContext(ctx, "Restored original container from interrupted redeploy; start it manually if it should be running", "container", journal.OriginalName, "state", backup.State)
+			slog.WarnContext(
+				ctx,
+				"Restored original container from interrupted redeploy; start it manually if it should be running",
+				"container",
+				journal.OriginalName,
+				"state",
+				backup.State,
+			)
 		}
 	}
 
@@ -844,7 +863,7 @@ func prepareRecreateHostConfigs(ctx context.Context, dockerClient *client.Client
 	}, err
 }
 
-func (s *ContainerService) recreateContainer(
+func (s *ContainerService) recreateContainerRuntime(
 	ctx context.Context,
 	containerInfo container.InspectResponse,
 	action, newName string,
@@ -1396,6 +1415,9 @@ func (s *ContainerService) GetContainerEditConfig(ctx context.Context, container
 		return types.ContainerEditConfig{}, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
+	if containerJSON.Container.Config != nil {
+		containerJSON.Container.Config.Env = maskSecretEnvironment(containerJSON.Container.Config.Env, containerJSON.Container.Config.Labels)
+	}
 	currentContainerID, currentContainerErr := cgroup.CurrentContainerID()
 	return types.NewContainerEditConfigFromInspect(
 		&containerJSON.Container,
@@ -1531,6 +1553,9 @@ func (s *ContainerService) GetContainerDetails(ctx context.Context, id string) (
 		return types.ContainerDetails{}, err
 	}
 
+	if containerInspect.Config != nil {
+		containerInspect.Config.Env = maskSecretEnvironment(containerInspect.Config.Env, containerInspect.Config.Labels)
+	}
 	details := types.NewContainerDetails(containerInspect)
 	currentContainerID, currentContainerErr := cgroup.CurrentContainerID()
 	updates, err := s.imageService.GetUpdateInfoByContainers(ctx, []container.Summary{{
@@ -1756,6 +1781,13 @@ func (s *ContainerService) CreateContainer(
 		}
 	}
 
+	owner := types.SecretOwner{Kind: "container", ID: strings.TrimPrefix(containerName, "/")}
+	resolved, secretErr := s.secrets.ResolveSecrets(ctx, owner)
+	if secretErr != nil {
+		return nil, secretErr
+	}
+	config.Env = applySecretEnvironment(config.Env, resolved.Environment)
+	config.Labels = secretEnvironmentLabels(config.Labels, resolved.Environment)
 	defer s.eventService.BeginDockerResourceSuppressionWindow("container", "", containerName)()
 	resp, err := s.dockerService.Call(ctx, func(ctx context.Context, dockerClient *client.Client) (client.ContainerCreateResult, error) {
 		return compat.ContainerCreateWithCompatibility(ctx, dockerClient, compat.CreateRequest{Options: client.ContainerCreateOptions{
@@ -1843,6 +1875,9 @@ func (s *ContainerService) CreateContainer(
 		return nil, fmt.Errorf("failed to inspect created container: %w", err)
 	}
 
+	if recordErr := s.secrets.RecordSecretDeployment(ctx, owner, resolved); recordErr != nil {
+		return nil, recordErr
+	}
 	return new(containerJSON.Container), nil
 }
 

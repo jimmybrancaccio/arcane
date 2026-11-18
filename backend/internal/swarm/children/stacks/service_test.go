@@ -13,6 +13,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/libtnb/sqlite"
+	"github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -91,6 +92,7 @@ func TestService_UpdateAndGetStackSource_UsesStoredFilesWithoutSwarmManager(t *t
 	require.NoError(t, err)
 
 	svc := NewService(ServiceParams{
+		Secrets:         testSecretHooks(),
 		SettingsService: settingsSvc,
 	})
 	deployRec := stubStackSourceUpdateDeploy(t)
@@ -169,6 +171,7 @@ func TestService_UpdateAndGetStackSource_RoundTripsOverride(t *testing.T) {
 	require.NoError(t, err)
 
 	svc := NewService(ServiceParams{
+		Secrets:         testSecretHooks(),
 		SettingsService: settingsSvc,
 	})
 	stubStackSourceUpdateDeploy(t)
@@ -217,6 +220,7 @@ func TestService_UpdateStackSource_PrunesAndRestoresOnDeployFailure(t *testing.T
 	require.NoError(t, err)
 
 	svc := NewService(ServiceParams{
+		Secrets:         testSecretHooks(),
 		SettingsService: settingsSvc,
 	})
 
@@ -343,7 +347,7 @@ func TestService_UpStack_DeploysSavedSource(t *testing.T) {
 	settingsSvc, err := newSettingsServiceForSwarmTest(t, ctx, db)
 	require.NoError(t, err)
 
-	svc := NewService(ServiceParams{SettingsService: settingsSvc})
+	svc := NewService(ServiceParams{Secrets: testSecretHooks(), SettingsService: settingsSvc})
 	deployRec := stubStackSourceUpdateDeploy(t)
 
 	require.ErrorIs(t, svc.UpStack(ctx, "0", "demo-stack"), errdefs.ErrNotFound)
@@ -374,7 +378,7 @@ func TestService_DownStack_RequiresSavedSource(t *testing.T) {
 	settingsSvc, err := newSettingsServiceForSwarmTest(t, ctx, db)
 	require.NoError(t, err)
 
-	svc := NewService(ServiceParams{SettingsService: settingsSvc})
+	svc := NewService(ServiceParams{Secrets: testSecretHooks(), SettingsService: settingsSvc})
 
 	err = svc.DownStack(ctx, "0", "demo-stack")
 	require.ErrorIs(t, err, common.ErrValidation)
@@ -411,6 +415,7 @@ func newDownStackTestService(t *testing.T, removed *[]string) *Service {
 	t.Cleanup(func() { _ = cli.Close() })
 
 	return NewService(ServiceParams{
+		Secrets:         testSecretHooks(),
 		DockerService:   dockerInternal.NewDockerClientService(ctx, db, settingsSvc, bus.Config{}).WithClient(cli),
 		EnsureManager:   func(context.Context) error { return nil },
 		SettingsService: settingsSvc,
@@ -461,4 +466,16 @@ func TestService_DownStack_RefusesWhenSavedSourceCannotRender(t *testing.T) {
 	err = svc.DownStack(ctx, "0", "demo-stack")
 	require.ErrorIs(t, err, common.ErrValidation)
 	require.Empty(t, removed)
+}
+
+func testSecretHooks() types.SwarmSecretHooks {
+	return types.SwarmSecretHooks{
+		Resolve: func(context.Context, types.SecretOwner) (types.SecretResolution, error) {
+			return types.SecretResolution{}, nil
+		},
+		Prepare: func(_ context.Context, spec swarm.ServiceSpec, _ types.SecretResolution) (swarm.ServiceSpec, error) {
+			return spec, nil
+		},
+		Record: func(context.Context, types.SecretOwner, types.SecretResolution) error { return nil },
+	}
 }

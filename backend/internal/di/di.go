@@ -46,6 +46,8 @@ import (
 	"getarcane.dev/arcane/v3/internal/role"
 	s3domain "getarcane.dev/arcane/v3/internal/s3"
 	"getarcane.dev/arcane/v3/internal/scheduler"
+	"getarcane.dev/arcane/v3/internal/scheduler/flow"
+	"getarcane.dev/arcane/v3/internal/secretsource"
 	"getarcane.dev/arcane/v3/internal/session"
 	"getarcane.dev/arcane/v3/internal/settings"
 	"getarcane.dev/arcane/v3/internal/swarm"
@@ -95,6 +97,7 @@ var (
 			},
 			federated.NewFederatedCredentialService,
 			kv.NewKVService,
+			fx.Annotate(secretsource.NewService, fx.As(fx.Self()), fx.As(new(types.SecretRuntime))),
 			appimages.NewApplicationImagesService,
 			session.NewSessionService,
 			passkey.NewPasskeyService,
@@ -163,8 +166,10 @@ var (
 				localEnvironment *environment.EnvironmentService,
 				localUploads *upload.UploadService,
 				cfg *config.Config,
+				secretRuntime types.SecretRuntime,
 			) *project.ProjectService {
 				return project.NewProjectService(project.ProjectServiceParams{
+					Secrets:                     secretRuntime,
 					DB:                          db,
 					SettingsService:             localSettings,
 					EventService:                localEvent,
@@ -265,6 +270,7 @@ var (
 			provideProjectModule,
 			gitops.New,
 			variable.New,
+			provideSecretModule,
 			upload.New,
 			health.New,
 			func(service *activity.ActivityService, localEnvironment *environment.EnvironmentService, eventService *event.EventService) *activity.Module {
@@ -331,6 +337,7 @@ var (
 			fx.Annotate(scheduler.NewUpgradeLogCleanupJob, fx.ResultTags(`name:"upgrade-log-cleanup"`)),
 			scheduler.NewApnsOutboxJob,
 			scheduler.NewLdapSyncJob,
+			fx.Annotate(func(module *secretsource.Module, engine *flow.Engine) *flow.Job { return module.DriftJob(engine) }, fx.ResultTags(`name:"secret-drift"`)),
 		),
 	)
 )

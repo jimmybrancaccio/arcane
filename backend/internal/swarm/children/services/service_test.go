@@ -126,7 +126,7 @@ func TestService_ScaleService_HandlesServiceModes(t *testing.T) {
 			t.Cleanup(server.Close)
 
 			dockerService := newSettingsDockerService(t, newSwarmTestDockerClient(t, server))
-			svc := NewService(dockerService, func(context.Context) error { return nil }, nil)
+			svc := NewService(dockerService, func(context.Context) error { return nil }, nil, testSecretHooks())
 
 			resp, err := svc.ScaleService(ctx, "service-1", replicas)
 			if tt.wantErr {
@@ -203,4 +203,16 @@ func newSettingsDockerService(t *testing.T, dockerClient *client.Client) *docker
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, settingsService.Stop(context.WithoutCancel(t.Context()))) })
 	return docker.NewDockerClientService(t.Context(), db, settingsService, bus.Config{}).WithClient(dockerClient)
+}
+
+func testSecretHooks() types.SwarmSecretHooks {
+	return types.SwarmSecretHooks{
+		Resolve: func(context.Context, types.SecretOwner) (types.SecretResolution, error) {
+			return types.SecretResolution{}, nil
+		},
+		Prepare: func(_ context.Context, spec swarm.ServiceSpec, _ types.SecretResolution) (swarm.ServiceSpec, error) {
+			return spec, nil
+		},
+		Record: func(context.Context, types.SecretOwner, types.SecretResolution) error { return nil },
+	}
 }

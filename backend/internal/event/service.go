@@ -133,6 +133,9 @@ var (
 	}
 
 	eventDefinitions = map[EventType]eventDefinition{
+		EventTypeSecretFetch:      {"Secrets fetched: %s", "Infisical secrets fetched for '%s'", EventSeverityInfo},
+		EventTypeSecretFetchError: {"Secret fetch failed: %s", "Infisical secrets could not be fetched for '%s'", EventSeverityError},
+		EventTypeSecretChanged:    {"Secrets changed: %s", "Infisical values changed for '%s'", EventSeverityInfo},
 		EventTypeContainerStart:   {"Container started: %s", "Container '%s' has been started", EventSeveritySuccess},
 		EventTypeContainerStop:    {"Container stopped: %s", "Container '%s' has been stopped", EventSeverityInfo},
 		EventTypeContainerRestart: {"Container restarted: %s", "Container '%s' has been restarted", EventSeverityInfo},

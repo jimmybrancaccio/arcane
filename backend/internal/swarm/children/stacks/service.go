@@ -36,6 +36,7 @@ import (
 
 type (
 	Service struct {
+		secrets          types.SwarmSecretHooks
 		docker           *dockerInternal.DockerClientService
 		ensureManager    func(ctx context.Context) error
 		listTasks        func(ctx context.Context, filters client.Filters, params pagination.QueryParams) ([]types.SwarmTaskSummary, pagination.Response, error)
@@ -45,6 +46,7 @@ type (
 	}
 
 	ServiceParams struct {
+		Secrets          types.SwarmSecretHooks
 		DockerService    *dockerInternal.DockerClientService
 		EnsureManager    func(ctx context.Context) error
 		ListTasks        func(ctx context.Context, filters client.Filters, params pagination.QueryParams) ([]types.SwarmTaskSummary, pagination.Response, error)
@@ -85,6 +87,7 @@ var (
 
 func NewService(p ServiceParams) *Service {
 	return &Service{
+		secrets:          p.Secrets,
 		docker:           p.DockerService,
 		ensureManager:    p.EnsureManager,
 		listTasks:        p.ListTasks,
@@ -239,7 +242,16 @@ func (s *Service) DeployStack(ctx context.Context, environmentID string, req typ
 		}
 	}
 	if upsertStackSourceErr := s.upsertStackSource(ctx, environmentID, stackName, req.ComposeContent, overrideContent, envContent, req.Files); upsertStackSourceErr != nil {
-		slog.WarnContext(ctx, "failed to persist swarm stack source", "environmentId", cmp.Or(strings.TrimSpace(environmentID), "0"), "stackName", stackName, "error", upsertStackSourceErr)
+		slog.WarnContext(
+			ctx,
+			"failed to persist swarm stack source",
+			"environmentId",
+			cmp.Or(strings.TrimSpace(environmentID), "0"),
+			"stackName",
+			stackName,
+			"error",
+			upsertStackSourceErr,
+		)
 	}
 
 	workingDir := req.WorkingDir
@@ -254,7 +266,16 @@ func (s *Service) DeployStack(ctx context.Context, environmentID string, req typ
 		dockerClient,
 	)
 
+	owner := types.SecretOwner{Kind: "stack", ID: stackName}
+	resolved, secretErr := s.secrets.Resolve(ctx, owner)
+	if secretErr != nil {
+		return nil, secretErr
+	}
 	if deployStackErr := libswarm.DeployStack(ctx, dockerClient, libswarm.StackDeployOptions{
+		EnvOverride: resolved.Environment,
+		PrepareService: func(ctx context.Context, spec swarm.ServiceSpec) (swarm.ServiceSpec, error) {
+			return s.secrets.Prepare(ctx, spec, resolved)
+		},
 		Name:                 stackName,
 		ComposeContent:       req.ComposeContent,
 		OverrideContent:      overrideContent,
@@ -269,6 +290,9 @@ func (s *Service) DeployStack(ctx context.Context, environmentID string, req typ
 		return nil, classifySwarmStackError(deployStackErr)
 	}
 
+	if recordErr := s.secrets.Record(ctx, owner, resolved); recordErr != nil {
+		return nil, recordErr
+	}
 	return &types.SwarmStackDeployResponse{Name: stackName}, nil
 }
 
@@ -441,7 +465,16 @@ func (s *Service) UpdateStackSource(ctx context.Context, environmentID, stackNam
 			restoreErr = s.deleteStackSource(ctx, environmentID, stackName)
 		}
 		if restoreErr != nil {
-			slog.WarnContext(ctx, "failed to restore swarm stack source after deploy failure", "environmentId", cmp.Or(strings.TrimSpace(environmentID), "0"), "stackName", stackName, "error", restoreErr)
+			slog.WarnContext(
+				ctx,
+				"failed to restore swarm stack source after deploy failure",
+				"environmentId",
+				cmp.Or(strings.TrimSpace(environmentID), "0"),
+				"stackName",
+				stackName,
+				"error",
+				restoreErr,
+			)
 		}
 		return nil, fmt.Errorf("failed to redeploy swarm stack from updated source: %w", deployStackAfterSourceUpdateErr)
 	}
@@ -538,7 +571,16 @@ func (s *Service) RemoveStack(ctx context.Context, environmentID, stackName stri
 	}
 
 	if deleteStackSourceErr := s.deleteStackSource(ctx, environmentID, stackName); deleteStackSourceErr != nil {
-		slog.WarnContext(ctx, "failed to remove persisted swarm stack source", "environmentId", cmp.Or(strings.TrimSpace(environmentID), "0"), "stackName", stackName, "error", deleteStackSourceErr)
+		slog.WarnContext(
+			ctx,
+			"failed to remove persisted swarm stack source",
+			"environmentId",
+			cmp.Or(strings.TrimSpace(environmentID), "0"),
+			"stackName",
+			stackName,
+			"error",
+			deleteStackSourceErr,
+		)
 	}
 
 	return nil

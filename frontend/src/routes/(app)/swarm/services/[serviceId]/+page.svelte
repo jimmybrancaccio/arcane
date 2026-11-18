@@ -7,6 +7,7 @@
 	import { openConfirmDialog } from '#lib/components/confirm-dialog/index.js';
 	import ServiceEditorDialog from '#lib/components/dialogs/service-editor-dialog.svelte';
 	import ResourceNotFound from '#lib/components/resource-not-found.svelte';
+	import SecretBindings from '#lib/components/secret-bindings.svelte';
 	import SheetFooterActions from '#lib/components/sheets/sheet-footer-actions.svelte';
 	import { type TabItem } from '#lib/components/tab-bar/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -236,6 +237,7 @@
 	const canViewServiceLogs = $derived(hasPermission('swarm-services:logs', envId));
 
 	const tabItems = $derived<TabItem[]>([
+		{ value: 'secrets', label: m.secret_sources(), icon: SettingsIcon },
 		{ value: 'overview', label: m.common_overview(), icon: ContainersIcon },
 		...(canViewServiceLogs ? [{ value: 'logs', label: m.common_logs(), icon: FileTextIcon }] : []),
 		{ value: 'tasks', label: m.tasks(), icon: JobsIcon },
@@ -376,6 +378,9 @@
 		{/snippet}
 
 		{#snippet tabContent(_activeTab)}
+			<Tabs.Content value="secrets" class="h-full overflow-y-auto"
+				><SecretBindings environmentId={envId} owner={{ kind: 'service', id: service.id }} /></Tabs.Content
+			>
 			<Tabs.Content value="overview" class="h-full">
 				<ServiceOverview {service} {serviceName} {serviceImage} {serviceMode} {desiredReplicas} {labels} />
 			</Tabs.Content>

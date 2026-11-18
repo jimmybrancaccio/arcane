@@ -41,6 +41,7 @@ const (
 )
 
 var (
+
 	// errTunnelRegistrationTimeout marks a manager that accepted the connection but never answered registration.
 	errTunnelRegistrationTimeout     = errors.New("timed out waiting for tunnel registration response")
 	errEstablishedTunnelSessionEnded = errors.New("established agent tunnel session ended")
@@ -292,6 +293,7 @@ func (c *TunnelClient) serveTunnelSession(ctx context.Context, conn TunnelConnec
 			TunnelCapabilityForwardedPermissions,
 			TunnelCapabilityForwardedGlobalAdmin,
 			TunnelCapabilityProjectTransfer,
+			TunnelCapabilitySecrets,
 			tunnelCapabilityMuxWindowPrefix + strconv.Itoa(streamWindowMiB),
 			tunnelCapabilityReadinessLease,
 		},

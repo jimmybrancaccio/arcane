@@ -105,6 +105,7 @@ func (s *TunnelServer) serveMuxTunnel(ctx context.Context, tunnel *AgentTunnel, 
 	s.updateConnectionStatus(callbackCtx, tunnel, ConnectionStateOnline)
 
 	handlers := http.NewServeMux()
+	registerSecretCallback(handlers, s.secretCallback, tunnel.EnvironmentID)
 	handlers.Handle(muxEventsPath, s.muxEventHandler(callbackCtx, tunnel.EnvironmentID))
 	handlers.Handle("POST "+muxLeasePath, s.muxLeaseHandler(callbackCtx, tunnel))
 	events := &http.Server{

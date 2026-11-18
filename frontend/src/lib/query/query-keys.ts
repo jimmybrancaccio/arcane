@@ -14,6 +14,10 @@ function stableSerialize(value: unknown): string {
 }
 
 export const queryKeys = {
+	secretSources: {
+		all: ['secret-sources'] as const,
+		bindings: (env: string, kind: string, id: string) => ['secret-bindings', env, kind, id] as const
+	},
 	swarm: {
 		info: (environmentId: string) => ['swarm', environmentId, 'info'] as const,
 		status: (environmentId: string) => ['swarm', environmentId, 'status'] as const,
