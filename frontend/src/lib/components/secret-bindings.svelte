@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 
 	import SelectWithLabel from '#lib/components/form/select-with-label.svelte';
 	import SecretSetup from '#lib/components/secret-setup.svelte';
@@ -37,7 +37,6 @@
 		composeIncomplete?: boolean;
 		onDraft?: (value: SecretBindingWrite) => void;
 	} = $props();
-	const client = useQueryClient();
 	const canUse = $derived(hasPermission('secret-sources:use', environmentId));
 	const sources = createQuery(() => ({
 		queryKey: queryKeys.secretSources.all,
@@ -66,10 +65,18 @@
 	let reviewedSuggestions = $state(false);
 	let previewSelection = $state('');
 	let savedDraft = $state('');
+	let redeployPending = $state(false);
+	let redeployError = $state('');
 	const draft = $derived(JSON.stringify({ environmentId, owner, sourceId, target, mappings, required, autoRollout }));
 	const unsavedMappings = $derived((Boolean(savedDraft) || mappings.length > 0) && draft !== savedDraft);
 	const selection = $derived(JSON.stringify({ environmentId, sourceId, target, owner }));
 	const stalePreview = $derived(Boolean(keys.length) && selection !== previewSelection);
+	const canSubmit = $derived.by(() => {
+		if (busy || stalePreview) return false;
+		if (unsavedMappings && (!sourceId || mappings.length === 0 || previewError)) return false;
+		if (onDraft) return unsavedMappings && mappings.length > 0;
+		return unsavedMappings || Boolean(bindings.data?.length);
+	});
 	const composeWorkload = $derived(owner.kind === 'project' || owner.kind === 'stack');
 	const suggestions = $derived(suggestSecretMappings(composeContents, keys));
 	const unmatchedKeys = $derived(keys.filter((key) => !mappings.some((mapping) => mapping.key === key)));
@@ -92,6 +99,8 @@
 		previewError = '';
 		reviewedSuggestions = false;
 		savedDraft = '';
+		redeployPending = false;
+		redeployError = '';
 		manualKey = '';
 		manualService = '';
 	}
@@ -148,6 +157,8 @@
 	}
 	function edit(binding: SecretBinding) {
 		reviewedSuggestions = false;
+		redeployPending = false;
+		redeployError = '';
 		manualKey = binding.keys[0] ?? '';
 		editingId = binding.id;
 		sourceId = binding.sourceId;
@@ -168,13 +179,18 @@
 		});
 	}
 	async function save() {
+		if (!canSubmit) return;
 		busy = true;
+		redeployError = '';
 		const savedSelection = draft;
+		const requestedSelection = selection;
+		const deploymentEnvironment = environmentId;
+		const deploymentOwner = { ...owner };
 		const value: SecretBindingWrite = {
-			owner,
+			owner: deploymentOwner,
 			sourceId,
-			target,
-			mappings,
+			target: { ...target },
+			mappings: mappings.map((mapping) => ({ ...mapping })),
 			required,
 			autoRollout,
 			enabled: true,
@@ -186,15 +202,31 @@
 			return;
 		}
 		await handleApiResultWithCallbacks({
-			result: await tryCatch(secretSourceService.saveBinding(environmentId, editingId, value)),
+			result: await tryCatch(
+				secretSourceService.saveAndRedeploy(deploymentEnvironment, {
+					owner: deploymentOwner,
+					binding: unsavedMappings ? { id: editingId, value } : undefined,
+					onSaved: (binding) => {
+						if (requestedSelection !== selection) return;
+						editingId = binding.id;
+						savedDraft = savedSelection;
+						redeployPending = true;
+					}
+				})
+			),
 			message: m.secret_operation_failed(),
 			setLoadingState: (value) => {
 				busy = value;
 			},
 			onSuccess: async () => {
-				savedDraft = savedSelection;
-				editingId = '';
-				await client.invalidateQueries({ queryKey: queryKeys.secretSources.bindings(environmentId, owner.kind, owner.id) });
+				if (requestedSelection !== selection) return;
+				redeployPending = false;
+				await bindings.refetch();
+			},
+			onError: async (error) => {
+				if (requestedSelection !== selection) return;
+				redeployError = extractApiErrorMessage(error);
+				await bindings.refetch();
 			}
 		});
 	}
@@ -202,19 +234,6 @@
 		await handleApiResultWithCallbacks({
 			result: await tryCatch(secretSourceService.deleteBinding(environmentId, id)),
 			message: m.secret_operation_failed(),
-			onSuccess: async () => {
-				await bindings.refetch();
-			}
-		});
-	}
-	async function apply() {
-		busy = true;
-		await handleApiResultWithCallbacks({
-			result: await tryCatch(secretSourceService.apply(environmentId, owner)),
-			message: m.secret_operation_failed(),
-			setLoadingState: (value) => {
-				busy = value;
-			},
 			onSuccess: async () => {
 				await bindings.refetch();
 			}
@@ -470,17 +489,20 @@
 					/>
 				{/if}
 				{#if nativeSupported}<p class="text-sm text-muted-foreground">{m.native_secret_delivery_description()}</p>{/if}
-				{#if unsavedMappings && bindings.data?.length}<p role="status">{m.save_reviewed_mappings_before_apply()}</p>{/if}
+				{#if redeployError}
+					<p role="alert" class="text-destructive">
+						{#if redeployPending}{m.saved_mappings_redeploy_failed()}
+						{/if}{redeployError}
+					</p>
+				{/if}
+				<p class="text-sm text-muted-foreground">
+					{onDraft ? m.use_secret_mappings_description() : m.save_and_redeploy_description()}
+				</p>
 				<div class="flex flex-wrap gap-2">
-					<Button
-						onclick={save}
-						disabled={busy || stalePreview || !unsavedMappings || !sourceId || mappings.length === 0 || Boolean(previewError)}
-						>{m.bind_secrets()}</Button
-					><Button variant="outline" onclick={check} disabled={busy}>{m.check_secrets()}</Button><Button
-						variant="outline"
-						onclick={apply}
-						disabled={busy || unsavedMappings || stalePreview || !bindings.data?.length}>{m.apply_secret_changes()}</Button
+					<Button onclick={save} disabled={!canSubmit}
+						>{#if onDraft}{m.use_secret_mappings()}{:else if busy}{m.saving_and_redeploying()}{:else}{m.projects_save_and_redeploy()}{/if}</Button
 					>
+					<Button variant="outline" onclick={check} disabled={busy || Boolean(onDraft)}>{m.check_secrets()}</Button>
 				</div>
 			</div></Card.Content
 		>

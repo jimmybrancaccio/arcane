@@ -83,6 +83,21 @@ class SecretSourceService extends BaseAPIService {
 		await this.api.post(`/agents/${environmentId}/secret-bindings/apply`, owner);
 	}
 
+	async saveAndRedeploy(
+		environmentId: string,
+		options: {
+			owner: SecretOwner;
+			binding?: { id: string; value: SecretBindingWrite };
+			onSaved: (binding: SecretBinding) => void;
+		}
+	): Promise<void> {
+		if (options.binding) {
+			const binding = await this.saveBinding(environmentId, options.binding.id, options.binding.value);
+			options.onSaved(binding);
+		}
+		await this.apply(environmentId, options.owner);
+	}
+
 	async check(environmentId: string, owner: SecretOwner): Promise<SecretBinding[]> {
 		await environmentStore.ready;
 		const response = await this.api.post(`/agents/${environmentId}/secret-bindings/check`, undefined, {
