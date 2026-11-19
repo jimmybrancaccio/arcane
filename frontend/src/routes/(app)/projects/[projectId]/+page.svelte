@@ -2577,7 +2577,12 @@
 
 		{#snippet tabContent()}
 			<Tabs.Content value="secrets" class="h-full overflow-y-auto"
-				><SecretBindings environmentId={envId} owner={{ kind: 'project', id: project.id }} /></Tabs.Content
+				><SecretBindings
+					environmentId={envId}
+					owner={{ kind: 'project', id: project.id }}
+					composeContents={[serverComposeContent, serverOverrideContent]}
+					composeIncomplete={composeFiles.length > 1}
+				/></Tabs.Content
 			>
 			{@render projectServicesTab(project)}
 

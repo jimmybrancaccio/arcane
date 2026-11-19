@@ -21,13 +21,22 @@
 	} from '#lib/types/secret-source.js';
 	import { extractApiErrorMessage, handleApiResultWithCallbacks } from '#lib/utils/api.js';
 	import { hasPermission } from '#lib/utils/auth.js';
+	import { suggestSecretMappings } from '#lib/utils/secret-mappings.js';
 	import { tryCatch } from '#lib/utils/try-catch.js';
 
 	let {
 		environmentId,
 		owner,
+		composeContents = [],
+		composeIncomplete = false,
 		onDraft
-	}: { environmentId: string; owner: SecretOwner; onDraft?: (value: SecretBindingWrite) => void } = $props();
+	}: {
+		environmentId: string;
+		owner: SecretOwner;
+		composeContents?: string[];
+		composeIncomplete?: boolean;
+		onDraft?: (value: SecretBindingWrite) => void;
+	} = $props();
 	const client = useQueryClient();
 	const canUse = $derived(hasPermission('secret-sources:use', environmentId));
 	const sources = createQuery(() => ({
@@ -52,6 +61,18 @@
 	let browseProjects = $state<SecretBrowseProject[]>([]);
 	let folders = $state<string[]>([]);
 	let browseError = $state('');
+	let manualKey = $state('');
+	let manualService = $state('');
+	let reviewedSuggestions = $state(false);
+	let previewSelection = $state('');
+	let savedDraft = $state('');
+	const draft = $derived(JSON.stringify({ environmentId, owner, sourceId, target, mappings, required, autoRollout }));
+	const unsavedMappings = $derived((Boolean(savedDraft) || mappings.length > 0) && draft !== savedDraft);
+	const selection = $derived(JSON.stringify({ environmentId, sourceId, target, owner }));
+	const stalePreview = $derived(Boolean(keys.length) && selection !== previewSelection);
+	const composeWorkload = $derived(owner.kind === 'project' || owner.kind === 'stack');
+	const suggestions = $derived(suggestSecretMappings(composeContents, keys));
+	const unmatchedKeys = $derived(keys.filter((key) => !mappings.some((mapping) => mapping.key === key)));
 	const nativeSupported = $derived(owner.kind === 'stack' || owner.kind === 'service');
 	const prefix = $derived(`infisical-${owner.kind}-${owner.id}`);
 
@@ -69,6 +90,10 @@
 		folders = [];
 		browseError = '';
 		previewError = '';
+		reviewedSuggestions = false;
+		savedDraft = '';
+		manualKey = '';
+		manualService = '';
 	}
 	$effect(() => {
 		if (!sourceId && sources.data?.length)
@@ -89,23 +114,41 @@
 			}
 		});
 	}
+	function reviewSuggestions() {
+		mappings = suggestions.mappings.map((mapping) => ({ ...mapping }));
+		reviewedSuggestions = true;
+	}
 	async function preview() {
 		previewError = '';
+		busy = true;
+		const requestedSelection = selection;
 		await handleApiResultWithCallbacks({
 			result: await tryCatch(secretSourceService.keys(sourceId, target)),
 			message: m.secret_operation_failed(),
+			setLoadingState: (value) => {
+				busy = value;
+			},
 			onSuccess: (result) => {
+				if (requestedSelection !== selection) return;
+				previewSelection = requestedSelection;
 				keys = result.keys;
-				mappings = keys.map((key) => ({ key, name: key, delivery: 'environment' }));
+				manualKey = keys[0] ?? '';
+				if (!editingId) {
+					if (composeWorkload) {
+						mappings = suggestSecretMappings(composeContents, result.keys).mappings;
+						reviewedSuggestions = true;
+					} else mappings = keys.map((key) => ({ key, name: key, delivery: 'environment' }));
+				}
 			},
 			onError: (error) => {
-				keys = [];
-				mappings = [];
+				if (requestedSelection !== selection) return;
 				previewError = extractApiErrorMessage(error);
 			}
 		});
 	}
 	function edit(binding: SecretBinding) {
+		reviewedSuggestions = false;
+		manualKey = binding.keys[0] ?? '';
 		editingId = binding.id;
 		sourceId = binding.sourceId;
 		target = { ...binding.target };
@@ -113,9 +156,20 @@
 		keys = binding.keys;
 		required = binding.required;
 		autoRollout = binding.autoRollout;
+		previewSelection = JSON.stringify({ environmentId, sourceId: binding.sourceId, target: binding.target, owner });
+		savedDraft = JSON.stringify({
+			environmentId,
+			owner,
+			sourceId: binding.sourceId,
+			target: binding.target,
+			mappings: binding.mappings,
+			required: binding.required,
+			autoRollout: binding.autoRollout
+		});
 	}
 	async function save() {
 		busy = true;
+		const savedSelection = draft;
 		const value: SecretBindingWrite = {
 			owner,
 			sourceId,
@@ -138,6 +192,7 @@
 				busy = value;
 			},
 			onSuccess: async () => {
+				savedDraft = savedSelection;
 				editingId = '';
 				await client.invalidateQueries({ queryKey: queryKeys.secretSources.bindings(environmentId, owner.kind, owner.id) });
 			}
@@ -193,7 +248,11 @@
 								{sources.data?.find((source) => source.id === binding.sourceId)?.name ?? binding.sourceId} · {binding.target
 									.environment} · {binding.target.path}
 							</p>
-							<p class="text-sm text-muted-foreground">{binding.keys.join(', ')}</p>
+							<p class="text-sm text-muted-foreground">
+								{binding.mappings
+									.map((mapping) => `${mapping.key} → ${mapping.name} (${mapping.service || m.all_services()})`)
+									.join(', ')}
+							</p>
 							<p class="text-sm">
 								{#if binding.lastError}{binding.lastError}{:else if !binding.deployedAt}{m.secrets_not_deployed()}{:else if binding.changed}{m.secrets_changed()}{:else}{m.secrets_current()}{/if}
 							</p>
@@ -281,9 +340,28 @@
 						<Label for={`${prefix}-path`}>{m.secret_path()}</Label><Input id={`${prefix}-path`} bind:value={target.path} />
 					</div>
 				</div>
-				<Button variant="outline" disabled={!sourceId} onclick={preview}>{m.preview_secret_keys()}</Button>
+				<Button variant="outline" disabled={!sourceId || busy} onclick={preview}>{m.preview_secret_keys()}</Button>
 				{#if previewError}<p role="alert" class="text-destructive">{previewError}</p>{/if}
+				{#if stalePreview}<p role="status">{m.preview_changed_secret_target()}</p>{/if}
 				{#if keys.length}<p class="text-sm text-muted-foreground">{m.select_secret_keys()}</p>{/if}
+				{#if composeWorkload && keys.length}
+					<Button
+						variant="outline"
+						onclick={reviewSuggestions}
+						disabled={busy || stalePreview || suggestions.status !== 'available'}>{m.suggest_secret_mappings()}</Button
+					>
+					<p class="text-sm text-muted-foreground">{m.review_secret_mapping_suggestions()}</p>
+					{#if suggestions.status === 'missing'}<p role="status">
+							{m.secret_mapping_source_missing()}
+						</p>{:else if suggestions.status === 'invalid'}<p role="alert" class="text-destructive">
+							{m.secret_mapping_source_invalid()}
+						</p>{/if}
+					{#if suggestions.hasExternalInputs || composeIncomplete}<p role="status">{m.secret_mapping_external_inputs()}</p>{/if}
+					{#if reviewedSuggestions && mappings.length === 0}<p role="status">{m.no_secret_mapping_suggestions()}</p>{/if}
+					{#if unmatchedKeys.length}<p class="text-sm">
+							{m.unmapped_secret_keys()}: <span class="font-mono">{unmatchedKeys.join(', ')}</span>
+						</p>{/if}
+				{/if}
 				{#each mappings as mapping, index (`${mapping.key}-${index}`)}
 					<div class="grid items-center gap-3 rounded-xl border p-3 sm:grid-cols-4">
 						<span class="truncate font-mono text-sm">{mapping.key}</span>
@@ -330,6 +408,42 @@
 						{/if}
 					</div>
 				{/each}
+				{#if keys.length}
+					<div class="grid items-end gap-3 rounded-xl border p-3 sm:grid-cols-3">
+						<SelectWithLabel
+							id={`${prefix}-manual-key`}
+							label={m.secret_keys()}
+							value={manualKey}
+							onValueChange={(value) => {
+								manualKey = value;
+							}}
+							options={keys.map((key) => ({ value: key, label: key }))}
+						/>
+						{#if suggestions.services.length && composeWorkload}
+							<SelectWithLabel
+								id={`${prefix}-manual-service`}
+								label={m.recipient_service()}
+								value={manualService}
+								onValueChange={(value) => {
+									manualService = value;
+								}}
+								options={suggestions.services.map((service) => ({ value: service, label: service }))}
+							/>
+						{:else}
+							<Input aria-label={m.service_name_optional()} placeholder={m.service_name_optional()} bind:value={manualService} />
+						{/if}
+						<Button
+							variant="outline"
+							disabled={busy || !manualKey || (composeWorkload && !manualService.trim())}
+							onclick={() => {
+								mappings = [
+									...mappings,
+									{ key: manualKey, name: manualKey, delivery: 'environment', service: manualService.trim() }
+								];
+							}}>{m.add_secret_mapping()}</Button
+						>
+					</div>
+				{/if}
 				<div class="flex items-center gap-3">
 					<Switch id={`${prefix}-required`} bind:checked={required} /><Label for={`${prefix}-required`}
 						>{m.required_secrets()}</Label
@@ -356,13 +470,16 @@
 					/>
 				{/if}
 				{#if nativeSupported}<p class="text-sm text-muted-foreground">{m.native_secret_delivery_description()}</p>{/if}
+				{#if unsavedMappings && bindings.data?.length}<p role="status">{m.save_reviewed_mappings_before_apply()}</p>{/if}
 				<div class="flex flex-wrap gap-2">
-					<Button onclick={save} disabled={busy || !sourceId || mappings.length === 0 || Boolean(previewError)}
+					<Button
+						onclick={save}
+						disabled={busy || stalePreview || !unsavedMappings || !sourceId || mappings.length === 0 || Boolean(previewError)}
 						>{m.bind_secrets()}</Button
 					><Button variant="outline" onclick={check} disabled={busy}>{m.check_secrets()}</Button><Button
 						variant="outline"
 						onclick={apply}
-						disabled={busy || !bindings.data?.length}>{m.apply_secret_changes()}</Button
+						disabled={busy || unsavedMappings || stalePreview || !bindings.data?.length}>{m.apply_secret_changes()}</Button
 					>
 				</div>
 			</div></Card.Content
