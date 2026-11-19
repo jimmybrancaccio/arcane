@@ -316,7 +316,11 @@
 
 <ResourcePageLayout title={stackName} subtitle={stackSubtitle} {actionButtons} {statCards}>
 	{#snippet mainContent()}
-		<SecretBindings environmentId={data.envId} owner={{ kind: 'stack', id: data.stackName }} />
+		<SecretBindings
+			environmentId={data.envId}
+			owner={{ kind: 'stack', id: data.stackName }}
+			composeContents={[source?.composeContent ?? '', source?.overrideContent ?? '']}
+		/>
 		<div class="flex min-h-screen-inset-18 flex-col gap-4">
 			{#if !hasLiveStack && canViewSource}
 				<Card.Root>

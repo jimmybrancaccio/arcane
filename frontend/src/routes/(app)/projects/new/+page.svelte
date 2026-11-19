@@ -633,6 +633,7 @@
 	<SecretBindings
 		environmentId={currentEnvId}
 		owner={{ kind: 'project', id: '' }}
+		composeContents={[inputs.composeContent.value]}
 		onDraft={(value) => {
 			pendingSecrets = value;
 			showSecrets = false;

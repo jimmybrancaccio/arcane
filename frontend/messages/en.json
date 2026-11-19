@@ -4767,5 +4767,16 @@
 "invalid_secret_file_mode": "Enter file permissions using three or four octal digits.",
  "browse_infisical_projects": "Browse Infisical projects",
  "browse_infisical_folders": "Browse Infisical folders",
- "select_infisical_project": "Select Infisical project"
+ "select_infisical_project": "Select Infisical project",
+	"suggest_secret_mappings": "Suggest service mappings",
+	"review_secret_mapping_suggestions": "Review and edit these mappings before binding. Suggestions only use environment names and whole-variable references in Compose. Suggesting does not save bindings, change Compose, or deploy anything. Required Compose variables must still resolve before deployment.",
+	"secret_mapping_source_missing": "Compose source is unavailable. Add service mappings manually; no secrets have been selected automatically.",
+	"secret_mapping_source_invalid": "Compose source could not be analyzed safely. Fix the YAML or add service mappings manually.",
+	"secret_mapping_external_inputs": "Additional Compose files, env_file entries, and extends may contain mappings that are not shown here. Review those inputs and add any missing mappings manually.",
+	"no_secret_mapping_suggestions": "No matching service variables were found. Add mappings manually for secrets removed from Compose or used inside composite values.",
+	"unmapped_secret_keys": "Unmapped secret keys",
+	"add_secret_mapping": "Add mapping",
+	"preview_changed_secret_target": "The secret source or target changed. Preview its keys again before saving mappings.",
+	"recipient_service": "Recipient service",
+	"save_reviewed_mappings_before_apply": "Save your reviewed mappings with Bind secrets before applying secret changes."
 }
