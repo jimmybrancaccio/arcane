@@ -4769,7 +4769,7 @@
  "browse_infisical_folders": "Browse Infisical folders",
  "select_infisical_project": "Select Infisical project",
 	"suggest_secret_mappings": "Suggest service mappings",
-	"review_secret_mapping_suggestions": "Review and edit these mappings before binding. Suggestions only use environment names and whole-variable references in Compose. Suggesting does not save bindings, change Compose, or deploy anything. Required Compose variables must still resolve before deployment.",
+	"review_secret_mapping_suggestions": "Review and edit the suggested service mappings before continuing. Suggestions use environment names and whole-variable references in Compose. Required Compose variables must still resolve before deployment.",
 	"secret_mapping_source_missing": "Compose source is unavailable. Add service mappings manually; no secrets have been selected automatically.",
 	"secret_mapping_source_invalid": "Compose source could not be analyzed safely. Fix the YAML or add service mappings manually.",
 	"secret_mapping_external_inputs": "Additional Compose files, env_file entries, and extends may contain mappings that are not shown here. Review those inputs and add any missing mappings manually.",
@@ -4778,5 +4778,9 @@
 	"add_secret_mapping": "Add mapping",
 	"preview_changed_secret_target": "The secret source or target changed. Preview its keys again before saving mappings.",
 	"recipient_service": "Recipient service",
-	"save_reviewed_mappings_before_apply": "Save your reviewed mappings with Bind secrets before applying secret changes."
+	"save_and_redeploy_description": "Save the reviewed mappings and redeploy this workload using its Infisical secrets. Running containers or Swarm tasks will be replaced.",
+	"use_secret_mappings": "Use mappings",
+	"use_secret_mappings_description": "These mappings will be saved and applied when you create and deploy the project.",
+	"saved_mappings_redeploy_failed": "Mappings were saved, but redeployment failed. Retry Save and Redeploy to apply the saved mappings.",
+	"saving_and_redeploying": "Saving and Redeploying…"
 }
