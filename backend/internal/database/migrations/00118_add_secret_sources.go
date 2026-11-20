@@ -3,15 +3,21 @@ package migrations
 import "github.com/pressly/goose/v3"
 
 const (
-	v117Up = `
-CREATE TABLE secret_sources (
+	legacySecretSchema     = "EXISTS (SELECT 1 FROM legacy_secret_schema)"
+	dropLegacySecretSchema = "DROP TABLE legacy_secret_schema;"
+	v118SQLiteDetect       = `CREATE TEMP TABLE legacy_secret_schema AS SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'secret_sources';
+`
+	v118PostgresDetect = `CREATE TEMP TABLE legacy_secret_schema AS SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename = 'secret_sources';
+`
+	v118Up = `
+CREATE TABLE IF NOT EXISTS secret_sources (
  id TEXT PRIMARY KEY, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP,
  name TEXT NOT NULL UNIQUE, settings TEXT NOT NULL, credential TEXT NOT NULL,
  setup_credential TEXT NOT NULL DEFAULT '', is_default BOOLEAN NOT NULL DEFAULT false,
  last_tested_at TIMESTAMP, last_error TEXT NOT NULL DEFAULT ''
 );
-CREATE UNIQUE INDEX idx_secret_source_default ON secret_sources(is_default) WHERE is_default = true;
-CREATE TABLE secret_bindings (
+CREATE UNIQUE INDEX IF NOT EXISTS idx_secret_source_default ON secret_sources(is_default) WHERE is_default = true;
+CREATE TABLE IF NOT EXISTS secret_bindings (
  id TEXT PRIMARY KEY, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP,
  environment_id TEXT NOT NULL, owner_kind TEXT NOT NULL, owner_id TEXT NOT NULL,
  cluster_id TEXT NOT NULL DEFAULT '', source_id TEXT NOT NULL, target TEXT NOT NULL,
@@ -21,11 +27,11 @@ CREATE TABLE secret_bindings (
  deployed_hash TEXT NOT NULL DEFAULT '', seen_hash TEXT NOT NULL DEFAULT '', attempted_hash TEXT NOT NULL DEFAULT '',
  keys TEXT NOT NULL DEFAULT '[]', deployed_at TIMESTAMP, checked_at TIMESTAMP, last_error TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX idx_secret_bindings_environment_id ON secret_bindings(environment_id);
-CREATE INDEX idx_secret_bindings_owner ON secret_bindings(environment_id, owner_kind, owner_id);
-CREATE INDEX idx_secret_bindings_cluster ON secret_bindings(cluster_id, owner_kind, owner_id);
+CREATE INDEX IF NOT EXISTS idx_secret_bindings_environment_id ON secret_bindings(environment_id);
+CREATE INDEX IF NOT EXISTS idx_secret_bindings_owner ON secret_bindings(environment_id, owner_kind, owner_id);
+CREATE INDEX IF NOT EXISTS idx_secret_bindings_cluster ON secret_bindings(cluster_id, owner_kind, owner_id);
 `
-	v117SQLitePermissions = `
+	v118SQLitePermissions = `
 CREATE TEMP TABLE prior_permissions(permission TEXT PRIMARY KEY);
 INSERT INTO prior_permissions VALUES ('users:list'),
 ('users:read'),
@@ -262,29 +268,31 @@ INSERT INTO source_permissions VALUES ('secret-sources:read'),
 ('secret-sources:manage'),
 ('secret-sources:use');
 UPDATE roles SET permissions = (SELECT json_group_array(value) FROM (SELECT value FROM json_each(roles.permissions) UNION SELECT permission FROM source_permissions))
-WHERE (SELECT COUNT(DISTINCT value) FROM json_each(roles.permissions) WHERE value IN (SELECT permission FROM prior_permissions)) = (SELECT COUNT(*) FROM prior_permissions);
+WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema)
+AND (SELECT COUNT(DISTINCT value) FROM json_each(roles.permissions) WHERE value IN (SELECT permission FROM prior_permissions)) =
+(SELECT COUNT(*) FROM prior_permissions);
 UPDATE roles SET permissions = json_insert(permissions, '$[#]', 'secret-sources:read')
-WHERE EXISTS (SELECT 1 FROM json_each(roles.permissions) WHERE value IN ('secret-sources:manage','secret-sources:use'))
+WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND EXISTS (SELECT 1 FROM json_each(roles.permissions) WHERE value IN ('secret-sources:manage','secret-sources:use'))
 AND NOT EXISTS (SELECT 1 FROM json_each(roles.permissions) WHERE value = 'secret-sources:read');
 INSERT INTO api_key_permissions(id, api_key_id, permission, environment_id, created_at)
 SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) %
 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), admins.api_key_id, source_permissions.permission, NULL, CURRENT_TIMESTAMP
 FROM (SELECT api_key_id FROM api_key_permissions WHERE COALESCE(environment_id, '') = '' AND permission IN (SELECT permission FROM prior_permissions)
 GROUP BY api_key_id HAVING COUNT(DISTINCT permission) = (SELECT COUNT(*) FROM prior_permissions)) AS admins CROSS JOIN source_permissions
-WHERE NOT EXISTS (SELECT 1 FROM api_key_permissions AS existing WHERE existing.api_key_id = admins.api_key_id AND existing.permission =
+WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND NOT EXISTS (SELECT 1 FROM api_key_permissions AS existing WHERE existing.api_key_id = admins.api_key_id AND existing.permission =
 source_permissions.permission AND COALESCE(existing.environment_id, '') = '');
 INSERT INTO api_key_permissions(id, api_key_id, permission, environment_id, created_at)
 SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) %
 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), source.api_key_id, 'secret-sources:read', source.environment_id,
 CURRENT_TIMESTAMP
-FROM api_key_permissions AS source WHERE source.permission IN ('secret-sources:manage','secret-sources:use')
+FROM api_key_permissions AS source WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND source.permission IN ('secret-sources:manage','secret-sources:use')
 AND NOT EXISTS (SELECT 1 FROM api_key_permissions AS existing WHERE existing.api_key_id = source.api_key_id AND existing.permission =
 'secret-sources:read' AND COALESCE(existing.environment_id, '') = COALESCE(source.environment_id, ''))
 GROUP BY source.api_key_id, source.environment_id;
 DROP TABLE prior_permissions;
 DROP TABLE source_permissions;
 `
-	v117PostgresPermissions = `
+	v118PostgresPermissions = `
 CREATE TEMP TABLE prior_permissions(permission TEXT PRIMARY KEY);
 INSERT INTO prior_permissions VALUES ('users:list'),
 ('users:read'),
@@ -522,33 +530,40 @@ INSERT INTO source_permissions VALUES ('secret-sources:read'),
 ('secret-sources:use');
 UPDATE roles SET permissions = (SELECT jsonb_agg(value) FROM (SELECT value FROM jsonb_array_elements_text(roles.permissions) UNION SELECT permission
 FROM source_permissions) AS merged)
-WHERE (SELECT COUNT(DISTINCT value) FROM jsonb_array_elements_text(roles.permissions) WHERE value IN (SELECT permission FROM prior_permissions)) =
+WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND (SELECT COUNT(DISTINCT value) FROM jsonb_array_elements_text(roles.permissions) WHERE value IN (SELECT permission FROM prior_permissions)) =
 (SELECT COUNT(*) FROM prior_permissions);
 UPDATE roles SET permissions = permissions || '["secret-sources:read"]'::jsonb
-WHERE (permissions @> '["secret-sources:manage"]'::jsonb OR permissions @> '["secret-sources:use"]'::jsonb)
+WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND (permissions @> '["secret-sources:manage"]'::jsonb OR permissions @> '["secret-sources:use"]'::jsonb)
 AND NOT permissions @> '["secret-sources:read"]'::jsonb;
 INSERT INTO api_key_permissions(id, api_key_id, permission, environment_id, created_at)
 SELECT gen_random_uuid()::text, admins.api_key_id, source_permissions.permission, NULL, CURRENT_TIMESTAMP
 FROM (SELECT api_key_id FROM api_key_permissions WHERE COALESCE(environment_id, '') = '' AND permission IN (SELECT permission FROM prior_permissions)
 GROUP BY api_key_id HAVING COUNT(DISTINCT permission) = (SELECT COUNT(*) FROM prior_permissions)) AS admins CROSS JOIN source_permissions
-WHERE NOT EXISTS (SELECT 1 FROM api_key_permissions AS existing WHERE existing.api_key_id = admins.api_key_id AND existing.permission =
+WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND NOT EXISTS (SELECT 1 FROM api_key_permissions AS existing WHERE existing.api_key_id = admins.api_key_id AND existing.permission =
 source_permissions.permission AND COALESCE(existing.environment_id, '') = '');
 INSERT INTO api_key_permissions(id, api_key_id, permission, environment_id, created_at)
 SELECT gen_random_uuid()::text, source.api_key_id, 'secret-sources:read', source.environment_id, CURRENT_TIMESTAMP
-FROM api_key_permissions AS source WHERE source.permission IN ('secret-sources:manage','secret-sources:use')
+FROM api_key_permissions AS source WHERE NOT EXISTS (SELECT 1 FROM legacy_secret_schema) AND source.permission IN ('secret-sources:manage','secret-sources:use')
 AND NOT EXISTS (SELECT 1 FROM api_key_permissions AS existing WHERE existing.api_key_id = source.api_key_id AND existing.permission =
 'secret-sources:read' AND COALESCE(existing.environment_id, '') = COALESCE(source.environment_id, ''))
 GROUP BY source.api_key_id, source.environment_id;
 DROP TABLE prior_permissions;
 DROP TABLE source_permissions;
 `
-	v117SQLitePermissionsDown = `UPDATE roles SET permissions = (SELECT json_group_array(value) FROM json_each(roles.permissions) WHERE value NOT LIKE 'secret-sources:%');
+	v118SQLitePermissionsDown = `UPDATE roles SET permissions = (SELECT json_group_array(value) FROM json_each(roles.permissions) WHERE value NOT LIKE 'secret-sources:%');
 DELETE FROM api_key_permissions WHERE permission LIKE 'secret-sources:%';`
-	v117PostgresPermissionsDown = `UPDATE roles SET permissions = permissions - 'secret-sources:read' - 'secret-sources:manage' - 'secret-sources:use';
+	v118PostgresPermissionsDown = `UPDATE roles SET permissions = permissions - 'secret-sources:read' - 'secret-sources:manage' - 'secret-sources:use';
 DELETE FROM api_key_permissions WHERE permission LIKE 'secret-sources:%';`
-	v117Down = `DROP TABLE secret_bindings; DROP TABLE secret_sources;`
+	v118Down = `DROP TABLE secret_bindings; DROP TABLE secret_sources;`
 )
 
 func init() {
-	goose.AddMigrationContext(run(v117Up+v117SQLitePermissions, v117Up+v117PostgresPermissions), run(v117SQLitePermissionsDown+v117Down, v117PostgresPermissionsDown+v117Down))
+	// Fork databases that used version 117 for secrets still need the upstream job grants.
+	goose.AddMigrationContext(
+		run(
+			v118SQLiteDetect+v118Up+v118SQLitePermissions+v117SQLiteGrantJobsRunIf("WHERE "+legacySecretSchema+" AND ")+dropLegacySecretSchema,
+			v118PostgresDetect+v118Up+v118PostgresPermissions+v117PostgresGrantJobsRunIf("WHERE "+legacySecretSchema+" AND ")+dropLegacySecretSchema,
+		),
+		run(v118SQLitePermissionsDown+v118Down, v118PostgresPermissionsDown+v118Down),
+	)
 }
