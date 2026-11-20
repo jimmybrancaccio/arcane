@@ -1,7 +1,7 @@
 {
 	"name": "arcane-frontend",
 	"private": true,
-	"version": "3.1.0",
+	"version": "3.1.1",
 	"type": "module",
 	"imports": {
 		"#lib/*": "./src/lib/*"
@@ -59,7 +59,6 @@
 		"bits-ui": "^2.21.0",
 		"clsx": "^2.1.1",
 		"formsnap": "^2.1.0",
-		"ky": "^2.2.0",
 		"marked": "^18.2.1",
 		"marked-alert": "^2.1.2",
 		"mode-watcher": "^1.1.0",

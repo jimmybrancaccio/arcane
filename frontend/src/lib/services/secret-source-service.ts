@@ -19,20 +19,20 @@ class SecretSourceService extends BaseAPIService {
 		await environmentStore.ready;
 		let path = `/agents/${environmentId}/secret-bindings/setup`;
 		if (operation === 'plan') path += '/plan';
-		const response = await this.api.post(path, body);
+		const response = await this.api.post<{ data: SecretSetupResult }>(path, body);
 		return response.data.data;
 	}
 	async list(): Promise<SecretSource[]> {
-		const response = await this.api.get('/secret-sources');
+		const response = await this.api.get<{ data: SecretSource[] }>('/secret-sources');
 		return response.data.data;
 	}
 
 	async save(id: string, body: SecretSourceWrite): Promise<SecretSource> {
 		if (id) {
-			const response = await this.api.put(`/secret-sources/${encodeURIComponent(id)}`, body);
+			const response = await this.api.put<{ data: SecretSource }>(`/secret-sources/${encodeURIComponent(id)}`, body);
 			return response.data.data;
 		}
-		const response = await this.api.post('/secret-sources', body);
+		const response = await this.api.post<{ data: SecretSource }>('/secret-sources', body);
 		return response.data.data;
 	}
 
@@ -41,22 +41,22 @@ class SecretSourceService extends BaseAPIService {
 	}
 
 	async test(id: string, target: SecretTarget): Promise<SecretCheck> {
-		const response = await this.api.post(`/secret-sources/${encodeURIComponent(id)}/test`, target);
+		const response = await this.api.post<{ data: SecretCheck }>(`/secret-sources/${encodeURIComponent(id)}/test`, target);
 		return response.data.data;
 	}
 
 	async browse(id: string, target: SecretTarget): Promise<SecretBrowse> {
-		const response = await this.api.post(`/secret-sources/${encodeURIComponent(id)}/browse`, target);
+		const response = await this.api.post<{ data: SecretBrowse }>(`/secret-sources/${encodeURIComponent(id)}/browse`, target);
 		return response.data.data;
 	}
 	async keys(id: string, target: SecretTarget): Promise<SecretCheck> {
-		const response = await this.api.post(`/secret-sources/${encodeURIComponent(id)}/keys`, target);
+		const response = await this.api.post<{ data: SecretCheck }>(`/secret-sources/${encodeURIComponent(id)}/keys`, target);
 		return response.data.data;
 	}
 
 	async bindings(environmentId: string, owner: SecretOwner): Promise<SecretBinding[]> {
 		await environmentStore.ready;
-		const response = await this.api.get(`/agents/${environmentId}/secret-bindings`, {
+		const response = await this.api.get<{ data: SecretBinding[] }>(`/agents/${environmentId}/secret-bindings`, {
 			params: { kind: owner.kind, ownerId: owner.id }
 		});
 		return response.data.data;
@@ -66,10 +66,10 @@ class SecretSourceService extends BaseAPIService {
 		await environmentStore.ready;
 		const path = `/agents/${environmentId}/secret-bindings`;
 		if (id) {
-			const response = await this.api.put(`${path}/${encodeURIComponent(id)}`, body);
+			const response = await this.api.put<{ data: SecretBinding }>(`${path}/${encodeURIComponent(id)}`, body);
 			return response.data.data;
 		}
-		const response = await this.api.post(path, body);
+		const response = await this.api.post<{ data: SecretBinding }>(path, body);
 		return response.data.data;
 	}
 
@@ -100,7 +100,7 @@ class SecretSourceService extends BaseAPIService {
 
 	async check(environmentId: string, owner: SecretOwner): Promise<SecretBinding[]> {
 		await environmentStore.ready;
-		const response = await this.api.post(`/agents/${environmentId}/secret-bindings/check`, undefined, {
+		const response = await this.api.post<{ data: SecretBinding[] }>(`/agents/${environmentId}/secret-bindings/check`, undefined, {
 			params: { kind: owner.kind, ownerId: owner.id }
 		});
 		return response.data.data;

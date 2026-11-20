@@ -147,8 +147,11 @@ const (
 	EnvironmentSystemRoot          = "arcane-environment-recovery"
 	rusticRepositoryMissingMessage = "No repository config file found"
 	DeletionBatchSize              = 500
+	dataDirectory                  = "data"
 
 	RemoteDisabledMessage = "S3 backup storage is missing. Remote backups were disabled; edit the policy to resume."
+
+	admissionWait = 6 * time.Hour
 )
 
 var (
@@ -201,6 +204,23 @@ func NewEngine(admission *runs.Admission, imageService *image.ImageService, auth
 
 func (e *Engine) TryAcquireRun(ctx context.Context, scope, id string) (*runs.Lease, bool, error) {
 	return e.admission.TryAcquire(ctx, types.SchedulerAdmissionKey{Scope: scope, ID: id})
+}
+
+// AwaitRun waits for the admission so overlapping backups run in turn instead of skipping.
+func (e *Engine) AwaitRun(ctx context.Context, scope, id string) (*runs.Lease, error) {
+	key := types.SchedulerAdmissionKey{Scope: scope, ID: id}
+	lease, admitted, err := e.admission.TryAcquire(ctx, key)
+	if err != nil || admitted {
+		return lease, err
+	}
+	slog.InfoContext(ctx, "Backup waiting for another backup to finish", "scope", scope)
+	waitCtx, cancel := context.WithTimeout(ctx, admissionWait)
+	defer cancel()
+	lease, err = e.admission.Acquire(waitCtx, key)
+	if err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+		return nil, common.Classify(common.ErrTimeout, fmt.Errorf("timed out after %s waiting for another backup to finish", admissionWait))
+	}
+	return lease, err
 }
 
 func (e *Engine) Hold(scope, id, run string, lease *runs.Lease) func(context.Context) {
@@ -642,21 +662,22 @@ func (e *Engine) runContainer(ctx context.Context, dockerClient *client.Client, 
 			return "", fmt.Errorf("failed to pull official Rustic image: %w", pullErr)
 		}
 	}
+	arcane, inspectErr := selfcontainer.InspectCurrentArcaneContainer(ctx, dockerClient)
+	if inspectErr != nil || kit.FromPtr(arcane).ID == "" {
+		slog.DebugContext(ctx, "backup engine: running Rustic on the default network", "error", inspectErr)
+	}
+	trust, err := rustic.TrustMounts(ctx, dockerClient, dataDirectory, kit.FromPtr(arcane).Mounts)
+	if err != nil {
+		return "", err
+	}
 	return rustic.Run(
 		ctx,
 		dockerClient,
 		password,
 		command,
 		repository.Environment,
-		append(slices.Clone(repository.Mounts), extraMounts...),
-		func() container.NetworkMode {
-			arcane, err := selfcontainer.InspectCurrentArcaneContainer(ctx, dockerClient)
-			if err != nil || kit.FromPtr(arcane).ID == "" {
-				slog.DebugContext(ctx, "backup engine: running Rustic on the default network", "error", err)
-				return ""
-			}
-			return container.NetworkMode("container:" + arcane.ID)
-		}(),
+		slices.Concat(repository.Mounts, extraMounts, trust),
+		container.NetworkMode(kit.Ternary(kit.FromPtr(arcane).ID == "", "", "container:"+kit.FromPtr(arcane).ID)),
 	)
 }
 
